@@ -7,6 +7,7 @@ requires-python = ">=3.9"
 dependencies = [
     "ipython>=8.18.1",
     "jax>=0.4.30",
+    "jaxopt>=0.8.0",
     "jupyter>=1.1.1",
     "matplotlib>=3.9.4",
     "numpy>=2.0.2",
