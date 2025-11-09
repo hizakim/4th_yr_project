@@ -7,10 +7,6 @@ import numpy as np
 
 # fixed-point function
 def mitral_fixed_point(s, x, alpha, Wgr, Wrg, wb):
-    """
-    s: state vector [r, b, g]
-    x: input
-    """
     m = x.shape[0]
     r, b, g = s[:m], s[m:2*m], s[2*m:]
 
@@ -19,7 +15,6 @@ def mitral_fixed_point(s, x, alpha, Wgr, Wrg, wb):
     g_new = sigmoid(alpha * x - wb * b_new + Wrg @ r)
 
     return jnp.concatenate([r_new, b_new, g_new])
-
 
 # unpack parameter
 def unpack_theta(theta, m):
