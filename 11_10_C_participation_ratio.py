@@ -125,13 +125,27 @@ cortex = jnp.array([0.5, 0.5])
 theta_star = jnp.concatenate([wr, wb, Wgr.flatten(), Wrg.flatten(), Wgm.flatten(), alpha, wcor, wy, wgranule])
 y_star = mitral_output(theta_star, x, m)
 
+# def loss(theta):
+#     y_ref = mitral_output(jax.lax.stop_gradient(theta), x, m)
+#     y = mitral_output(theta, x, m)
+#     return jnp.sum((y - y_ref)**2)
+
 def loss(theta):
+    #y_ref = mitral_output(jax.lax.stop_gradient(theta), x, m)
     y = mitral_output(theta, x, m)
-    return jnp.sum((y - y_star)**2)
+    return jnp.sum(y)
 
 grad_loss = jax.grad(loss)
-H = jax.jacrev(grad_loss)(theta_star) # Hessian of loss wrt theta
+hessian = jax.jit(jax.jacrev(grad_loss))
+
+print("Let's start")
+H = hessian(theta_star)
 H = jnp.squeeze(H) # if dimension is size 1, remove
+
+print("Hessian computed once")
+
+H = hessian(2*theta_star)
+print("Hessian computed twice")
 
 # SVD
 u, s, vt = jnp.linalg.svd(H)
@@ -140,7 +154,7 @@ np.savetxt("svals.txt", np.atleast_2d(np.array(s)))
 
 
 plt.figure(figsize=(8,4))
-plt.plot(s, marker='o')
+plt.semilogy(s, marker='o')
 plt.xlabel("Parameter Index")
 plt.ylabel("Singular Values")
 plt.grid(True)
