@@ -123,7 +123,7 @@ grad_loss = jax.grad(loss)
 hessian = jax.jit(jax.jacrev(grad_loss))
 
 
-no_samples = 200
+no_samples = 100
 participation_ratios = []
 
 for i in range(no_samples):
