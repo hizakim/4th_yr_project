@@ -27,7 +27,7 @@ def unpack_theta(theta, m):
     Wrg = theta[idx:idx+m*m].reshape((m, m)); idx += m*m
     Wgm = theta[idx:idx+m*m].reshape((m, m)); idx += m*m
     alpha = theta[idx:idx+m]; idx += m
-    wcor = theta[idx:idx+m]; idx += m # all same value (if one granule)
+    wcor = theta[idx:idx+m]; idx += m
     wy = theta[idx:idx+m]; idx += m
     wgranule = theta[idx:idx+m]; idx += m
     return wr, wb, Wgr, Wrg, Wgm, alpha, wcor, wy, wgranule
@@ -35,7 +35,7 @@ def unpack_theta(theta, m):
 
 # solve fixed point via Anderson - return g
 def solve_fixed_point(theta, x, m):
-    wr, wb, Wgr, Wrg, Wgm, alpha, wcor, wy, wgranule = unpack_theta(theta, m)
+    _, wb, Wgr, Wrg, _, alpha, _, _, _ = unpack_theta(theta, m)
     g0 = jnp.zeros(m)
     aa = AndersonAcceleration(mitral_fixed_point, history_size=5, tol=1e-10, maxiter=50)
     solution = aa.run(g0, x, alpha, Wgr, Wrg, wb)
@@ -44,11 +44,11 @@ def solve_fixed_point(theta, x, m):
 
 # find mitral output using solved g
 def mitral_output(theta, x, m):
-    wr, wb, Wgr, Wrg, Wgm, alpha, wcor, wy, wgranule = unpack_theta(theta, m)
+    wr, wb, Wgr, _, Wgm, alpha, wcor, wy, wgranule = unpack_theta(theta, m)
 
     g = solve_fixed_point(theta, x, m)
-    b = nr(alpha * x, n=1, k=1)
-    r = nr(alpha * x - Wgr @ g - wb * b, n=1, k=1)
+    b = nr(alpha * x)
+    r = nr(alpha * x - Wgr @ g - wb * b)
     base_y = nr(alpha * x + wr * r - wb * b - Wgm @ g)
 
     #===================

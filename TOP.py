@@ -15,7 +15,7 @@ def nr_b(x, n=4, k=1):
     return x**n / (x**n + k**n)
 
 x_r =[]
-def nr_r(x, n=4, k=1):
+def nr_r(x, n=4, k=0.5):
     x_r.append(x)
     return x**n / (x**n + k**n)
 
@@ -73,12 +73,12 @@ def mitral_output(theta, x, m, cortex):
     solution = aa_y.run(y0, base_y, wcor, wy, wgranule, cortex)
     y_fixed = solution.params
     #===================
-    return y_fixed
+    return g,b,r,y_fixed
 
 
 def from_y_next_step(theta, x, m, cortex):
     def loss(theta):
-        y = mitral_output(theta, x, m, cortex)
+        _, _, _, y = mitral_output(theta, x, m, cortex)
         return jnp.sum(y)
 
     grad_loss = jax.grad(loss)

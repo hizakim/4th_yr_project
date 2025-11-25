@@ -27,7 +27,7 @@ for label, params in sensors.items():
     Rm = R0 * (1 + G * (Delta_L / L0)) + 2 * Rcp
 
     # 2. Output voltage
-    V_out = Vin * Rm / (Rk + Rm)
+    V_out = Vin * Rk / (Rk + Rm)
 
     # 3. Quantized ADC output
     M = np.round(ADC_MAX_LEVEL * (V_out / Vin))
