@@ -27,7 +27,7 @@ for label, params in sensors.items():
     Rm = R0 * (1 + G * (Delta_L / L0)) + 2 * Rcp
 
     # 2. Output voltage
-    V_out = Vin * Rm / (Rk + Rm)
+    V_out = Vin * Rk / (Rk + Rm)
 
     # 3. Quantized ADC output
     M = np.round(ADC_MAX_LEVEL * (V_out / Vin))
@@ -38,6 +38,61 @@ for label, params in sensors.items():
 # Labels, title, and legend
 plt.xlabel('ΔL (mm)')
 plt.ylabel('M (0 to 31)')
+plt.grid(True, linestyle='--', alpha=0.6)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+###################
+
+# Plot V_out vs Delta_L for each sensor
+plt.figure(figsize=(5, 4))
+
+for label, params in sensors.items():
+    R0 = params["R0"]
+    L0 = params["L0"]
+    G = params["G"]
+    Rcp = params["Rcp"]
+
+    # Measured resistance
+    Rm = R0 * (1 + G * (Delta_L / L0)) + 2 * Rcp
+
+    # Output voltage
+    V_out = Vin * Rm / (Rk + Rm)
+
+    # Plot
+    plt.plot(Delta_L, V_out, linewidth=2, label=label)
+
+plt.xlabel("ΔL (mm)")
+plt.ylabel("V_out (V)")
+plt.grid(True, linestyle='--', alpha=0.6)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+# Plot V_out vs Rm for Delta_L = 10 mm for each sensor
+plt.figure(figsize=(5, 4))
+
+Delta_L_10 = 10  # mm
+
+for label, params in sensors.items():
+    R0 = params["R0"]
+    L0 = params["L0"]
+    G = params["G"]
+    Rcp = params["Rcp"]
+
+    # Measured resistance at Delta_L = 10mm
+    Rm = R0 * (1 + G * (Delta_L_10 / L0)) + 2 * Rcp
+
+    # Output voltage at Delta_L = 10mm
+    V_out = Vin * Rm / (Rk + Rm)
+
+    # Plot single point for each sensor
+    plt.plot(Rm, V_out, marker='o', markersize=8, label=label)
+
+plt.xlabel("Rm at ΔL = 10 mm (Ω)")
+plt.ylabel("V_out (V)")
+plt.title("V_out vs Rm at ΔL = 10 mm")
 plt.grid(True, linestyle='--', alpha=0.6)
 plt.legend()
 plt.tight_layout()

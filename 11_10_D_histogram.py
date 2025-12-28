@@ -77,7 +77,7 @@ def mitral_output(theta, x, m):
 
     #===================
     y0 = base_y
-    aa_y = AndersonAcceleration(y_fixed_point, history_size=5, tol=1e-10, maxiter=200)
+    aa_y = AndersonAcceleration(y_fixed_point, history_size=5, tol=1e-10, maxiter=20)
     solution = aa_y.run(y0, base_y, wcor, wy, wgranule, cortex)
     y_fixed = solution.params
     #===================
@@ -106,8 +106,8 @@ def sample_theta(key, m):
     return theta
 
 key, base_key = jax.random.split(key)
-theta_star = sample_theta(base_key, m)
-y_star = mitral_output(theta_star, x, m)
+#theta_star = sample_theta(base_key, m)
+#y_star = mitral_output(theta_star, x, m)
 
 def participation_ratio(H):
     u, s, vt = jnp.linalg.svd(H)
@@ -115,18 +115,21 @@ def participation_ratio(H):
     return participation_ratio
 
 def loss(theta):
+    #y_ref = mitral_output(jax.lax.stop_gradient(theta), x, m)
     y = mitral_output(theta, x, m)
-    return jnp.sum((y - y_star)**2)
+    return jnp.sum(y)
 
 grad_loss = jax.grad(loss)
+hessian = jax.jit(jax.jacrev(grad_loss))
 
-no_samples = 500
+
+no_samples = 100
 participation_ratios = []
 
 for i in range(no_samples):
     key, subkey = jax.random.split(key)
     theta = sample_theta(subkey, m)
-    H = jax.jacrev(grad_loss)(theta)
+    H = hessian(theta)
     H = jnp.squeeze(H) # if dimension is size 1, remove
     pr = float(participation_ratio(H))
     participation_ratios.append(pr)
