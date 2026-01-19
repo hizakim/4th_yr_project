@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 # Participation ratio
 def participation_ratio(s):
     s2 = jnp.sum(s**2)
-    s1 = jnp.sum(s)
+    s1 = jnp.sum(jnp.abs(s))
     return (s1*s1) / (s2)
 
 #===========================

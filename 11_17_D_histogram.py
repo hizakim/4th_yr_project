@@ -61,7 +61,7 @@ def mitral_output(theta, x, m):
 
 def participation_ratio(H):
     u, s, vt = jnp.linalg.svd(H)
-    participation_ratio = (jnp.sum(s))**2 / jnp.sum(s**2)
+    participation_ratio = (jnp.sum(jnp.abs(s)))**2 / jnp.sum(s**2)
     return participation_ratio
 
 def loss(theta):

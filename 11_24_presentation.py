@@ -118,7 +118,7 @@ plt.show()
 print("s =", s)
 
 # participation ratio
-participation_ratio = (jnp.sum(s))**2 / jnp.sum(s**2)
+participation_ratio = (jnp.sum(jnp.abs(s)))**2 / jnp.sum(s**2)
 print(f"Participation ratio: {participation_ratio}")
 
 # take the 6 bottom eigen vectors and plot value vs index (24)

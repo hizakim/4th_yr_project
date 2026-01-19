@@ -108,7 +108,7 @@ H = hessian(theta_star)
 H = jnp.squeeze(H)
 
 u, s, vt = jnp.linalg.svd(H)
-participation_ratio = (jnp.sum(s))**2 / jnp.sum(s**2)
+participation_ratio = (jnp.sum(jnp.abs(s)))**2 / jnp.sum(s**2)
 print("Participation ratio =", participation_ratio)
 
 #test
