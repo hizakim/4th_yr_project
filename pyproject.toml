@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
+    "absl-py>=2.0.0",
     "asttokens>=2.4.0",
     "ipython>=8.18.1",
     "jax>=0.4.30",
