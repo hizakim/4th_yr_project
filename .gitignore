@@ -11,3 +11,6 @@ wheels/
 
 # uv cache (when using project-local cache)
 .uv_cache
+
+# Cursor IDE local config
+.cursor/
