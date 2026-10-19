@@ -1,0 +1,927 @@
+\newpage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Introduction}
+\label{sec:Introduction}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+From the chemistry of a single cell to the workings of complex organisms, life depends on a remarkable ability for self-regulation. No matter how much the external environment fluctuates, living organisms must keep their internal conditions within narrow, precise boundaries. This process is known as homeostasis \supercite{Billman2020}. Common examples include the regulation of body temperature, blood glucose concentration, and pH balance. These variables are kept within physiological limits through feedback mechanisms that detect and correct any deviation from their set point. 
+
+Maintaining stability in biological systems is inherently challenging given that external perturbations are often stochastic, internal components can introduce noise, and delays in feedback can destabilise regulation. Neural circuits face similar challenges. Not only must they remain stable, but they must also stay flexible enough to support learning and adaptation. The consequences of failing to meet either are serious. Insufficient activity can impair information transmission and circuit responsiveness, while excessive activity can lead to disorders such as epilepsy or chronic pain.\supercite{Lignani2020,Wen2024} It is this risk of under or over excitation that makes homeostatic regulation in the nervous system so essential. 
+
+To keep activity within a functional range, neurons rely on homeostatic plasticity (HP), which adjusts both synaptic strength and intrinsic excitability in response to prolonged changes in activity levels.\supercite{Turrigiano2004} Synaptic scaling multiplies all incoming synaptic weights by a uniform factor, stabilising firing rates while preserving the relative differences that encode learned information.\supercite{Turrigiano1998} Intrinsic plasticity complements this by modifying ion channel expression, tuning a neuron's firing threshold and gain. Together, these mechanisms regulate the broader balance between excitation and inhibition across the network \supercite{Turrigiano2011}.
+
+
+HP is recognised as a widespread feature of the nervous system, observed across cortical and subcortical structures and across a range of species.\supercite{Wen2024,Turrigiano2004,Fitzpatrick2023,Galliano2021} However, despite its importance, many aspects of the underlying mechanisms remain poorly understood. 
+A central reason for this is the inherent difficulty of studying plasticity in living neural tissue. Neural circuits are highly interconnected, meaning that any manipulation targeting one component tends to propagate unpredictably across the network, making it difficult to isolate the contribution of a specific mechanism. Recording from neurons \textit{in vivo} adds further technical demands, and the very act of intervening risks perturbing the system under investigation.
+
+These challenges make computational modelling a powerful complementary approach. By design, models allow individual components and plasticity rules to be varied in isolation. Constructing biologically constrained models makes it possible to test hypotheses that are difficult to carry out experimentally and to generate predictions for future studies.
+
+In this work, we use computational modelling to study homeostatic plasticity in the mouse olfactory bulb (OB). 
+The OB is a particularly well-suited system, being compact and well-characterised with clearly defined cell types, and benefiting from detailed experimental measurements of activity dynamics and circuit structure that provide the biological constraints needed to build and validate a realistic model.\supercite{GallianoLab} Our ultimate aim is to identify mechanisms underlying homeostasis in the OB, provide testable predictions, and guide future experimental work.
+
+The remainder of this thesis is organised as follows. Section 2 introduces the olfactory bulb circuit, describing the key neuron types and the sensory deprivation experiment that provides the experimental motivation for this work. Section 3 presents the mathematical model developed, covering the neuronal response function, its fitting to experimental firing-rate data, the circuit equations, fixed-point solution, parameter initialisation, and stability analysis. Section 4 characterises the output-preserving subspace of the circuit, identifying a four-dimensional subspace of parameter space, shared across baseline solutions, along which parameters can change without altering the network output. Section 5 incorporates the experimental constraints from sensory deprivation, extending the analysis to the reduced intrinsic excitability of axonic interneurons, captured by the maximal firing rate of the green population, and identifying the compensatory adjustments required to maintain stable circuit output.
+
+All simulations and analyses were implemented in Python. The full codebase, including simulation scripts and analysis notebooks, is publicly available at \url{https://github.com/hanaizakim/4th_yr_project.git}.\supercite{hana2026}
+
+
+\newpage
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Olfactory Bulb (OB)}
+\label{subsec:Olfactory_bulb}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{OB: Sensory Deprivation}
+\label{subsec:OB:sensory deprivation}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Sensory deprivation has been shown to induce homeostatic plasticity (HP) in the mouse olfactory bulb (OB),\supercite{Galliano2021} and the procedure used to achieve this is both simple and minimally invasive. Because mice have two olfactory bulbs and input is ipsilateral,\supercite{Nagayama2014,Galliano2021} blocking one nostril selectively reduces sensory drive to the bulb on the same side while leaving the bulb on the other side largely unaffected. This anatomical segregation makes the system particularly well-suited for controlled deprivation experiments. A temporary nose plug inserted into one nostril is sufficient to reduce sensory input reversibly, while allowing the animal to continue breathing normally through the other side, without permanent physiological damage.
+
+Using this approach, experiments have shown that 24 hours of sensory deprivation induces measurable structural changes within the OB. In particular, dopaminergic axonic neurons exhibit a reduction in axon initial segment (AIS) length following the deprivation period.\supercite{Galliano2021} This type of structural adaptation can be interpreted as a homeostatic response in which neural elements adjust their connectivity and intrinsic excitability in response to the level of incoming sensory stimulation.
+
+Strikingly, when the nose plug is removed, OB output returns to its original activity level despite the structural changes induced during the sensory deprivation period.\supercite{Barber2015} Since dopaminergic axonic AIS length is  reduced, the restoration of circuit output implies that compensatory changes must arise elsewhere in the network. Identifying the mechanisms underlying this compensation is the central question motivating the work presented here.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{OB: Key Neuron Types}
+\label{subsec:key neuron types}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+To investigate possible mechanisms of homeostatic plasticity, the first stage of the project involved developing a mathematical model of the olfactory bulb (OB) that captures its main neuronal populations and their interactions.\supercite{Nagayama2014} Rather than attempting to represent every cell type present, the model focuses on the core populations whose dynamics are most relevant to sensory processing and circuit stability (Figure~\ref{fig:OB_1}). This kind of reduced, population-level approach is standard in computational neuroscience, where the goal is to capture dominant circuit behaviour rather than to account for every biological detail.\supercite{Dayan2001}
+
+The OB is the first central processing stage of olfactory information, transforming high-dimensional peripheral sensory input into structured population activity patterns. Each odour is characterised by a distinct chemical composition, and individual odorant molecules bind selectively to olfactory receptors expressed by olfactory sensory neurons (OSNs) located in the nose. This receptor-specific binding produces a combinatorial code of OSN activity, such that each odour evokes a characteristic spatial pattern of activation across the OB (Figure~\ref{fig:OB_1}). Importantly, OSNs expressing the same receptor type converge onto a common glomerulus, a region within the OB where OSN axons terminate and the first stage of neural processing of smells occurs. 
+
+Within each glomerulus, OSN axon terminals form excitatory synapses onto multiple downstream neuronal populations. In addition to main signalling pathways, the glomerular layer also contains a number of inhibitory and excitatory interneurons that shape signal processing at this stage of sensory integration. These interneurons play a crucial role in gain control, contrast enhancement, and decorrelation of odour representations, and are therefore central to both sensory computation and homeostatic regulation.
+
+For modelling purposes, we group OB interneurons into functionally defined populations that capture their dominant circuit roles. This abstraction allows us to retain essential features of the circuit's connectivity without introducing an excessive number of parameters or variables. We acknowledge that real interneuron populations are diverse, and that this grouping averages over subtype-specific differences. Its validity rests on the assumption that dominant circuit-level dynamics are shaped by the main connectivity patterns rather than by small differences between individual cell types. 
+
+
+\begin{itemize}[left=10pt, itemsep=6pt, topsep=6pt, parsep=2pt, partopsep=0pt]
+
+\item \textbf{Anaxonic interneurons (blue, $b$):}
+These cells, which represent the periglomerular cell population,\supercite{Nagayama2014}  drive local inhibition. By providing feedback inhibition within a single glomerulus, they regulate the level of excitation driven by OSN input. Functionally, they act as a rapid stabilising mechanism that prevents runaway excitation and contributes to local gain control. In the model, this population implements self-inhibitory feedback that helps stabilise glomerular activity.
+
+\item \textbf{Axonic interneurons (green, $g$):}
+These neurons, which represent short axon cells,\supercite{Nagayama2014}  provide lateral inhibition across glomeruli. They receive excitatory input from one glomerulus and project inhibitory outputs to neighbouring glomeruli, enabling competitive interactions between odour representations. This lateral inhibitory network enhances contrast between similar odours by suppressing shared activity across neighbouring glomeruli, producing more distinct and separable responses at the circuit output.
+
+\item \textbf{External tufted cells (ETCs, red, $r$):}
+ETCs act as fast excitatory relays within the glomerular circuit, transmitting OSN-driven signals to mitral cells.\supercite{Nagayama2014}  In the biological system, OSNs expressing the same olfactory receptor type 
+converge onto two bilateral ``sister'' glomeruli, which are linked via ETC-mediated interactions. For modelling simplicity, these sister glomeruli are merged into a single representative unit, resulting in one ETC population per glomerulus.
+
+\item \textbf{Mitral cells (grey):}
+Mitral cells serve as the primary projection neurons of the OB, integrating input from glomerular circuits and transmitting processed olfactory information to higher cortical areas.\supercite{Nagayama2014} They receive both direct excitatory drive and indirect inhibitory modulation via interneuron networks, and therefore their activity reflects the net output of the olfactory bulb circuit.
+
+\item \textbf{Granule cells (black):}
+Granule cells provide dendrodendritic feedback inhibition onto mitral cells and are among the most numerous interneurons in the OB.\supercite{Nagayama2014} They integrate inputs from both mitral cells and cortical projections, suggesting they play an important role in experience-dependent modulation. Together with the anaxonic interneurons in the glomerular layer, granule cells are one of the few neuronal populations in the adult brain to undergo continuous neurogenesis, and their inhibitory feedback plays an important role in shaping mitral cell output.\supercite{Lledo2016}
+
+\end{itemize}
+
+For convenience, we denote anaxonic interneurons as blue ($b$), axonic interneurons as green ($g$), and ETCs as red ($r$), following the colour scheme in Figure~\ref{fig:OB_1}. This notation is used throughout the mathematical formulation of the model.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{Figures/OB_schematic.png}
+    \caption{Simplified OB circuitry: OSNs (pink/orange/brown), axonic interneurons (green), anaxonic interneurons (blue), ETCs (red), mitral cells (grey), granule cells (black).}
+    \label{fig:OB_1}
+\end{figure}
+
+
+\newpage
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Mathematical Model}
+\label{sec:Mathematical_model}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Model: Neuron}
+\label{subsec:Model:Neuron}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Figure~\ref{fig:simple_circuit} illustrates the way the interaction between two neurons is computed in the model. The first neuron (yellow) receives a stimulus $x$ and generates an output $z$ through a function $\sigma_z$, such that $z = \sigma_z(x)$. A fraction of this output, $w_z~z$ (with $0<w_z<1$) serves as an input to the second neuron (purple), which applies its own function $\sigma_y$ to generate the output $y = \sigma_y(w_z~z)$.
+
+In the model, all variables represent steady-state firing rates, which implicitly assumes slow homeostatic timescales relative to fast action potential dynamics. Synaptic weights $w_i$ encode the effective strength of connections between neurons, while the functions $\sigma_j$ capture the input-output response of each population. This allows us to focus on the input-output relationships at the circuit level, setting aside detailed biophysical mechanisms such as ion channel kinetics or subthreshold membrane dynamics.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{Figures/simple_neurons.png}
+    \caption{Two-neuron circuit model: $x, z, y$ are steady-state firing rates and $w$ denotes synaptic coupling strength. $z = \sigma_z(x)$ and $y=\sigma_y(w_z z$)}
+    \label{fig:simple_circuit}
+\end{figure}
+
+Neuronal response is modelled using the Naka--Rushton function (Equation \eqref{eq:NRfunc}), which provides a simple, differentiable, and biologically motivated description of saturating nonlinear firing rate responses.\supercite{Dayan2001} It is widely used in computational neuroscience as a firing-rate transfer function and captures the sigmoidal nonlinearity characteristic of real neurons. Firing rates are expressed in normalised units, with the maximum response set to 1:
+
+\begin{equation}
+    \sigma_j(x)=\frac{x^{n_j}}{x^{n_j}+k_j^{n_j}}
+    \label{eq:NRfunc}
+\end{equation}
+
+
+Here, $k_j$ is the semi-saturation constant, defining the input level at which the neuron reaches half its maximum response, while $n_j$ (the Hill coefficient) determines how sharply the response transitions from low to high firing rates. Larger $n_j$ produces a more switch-like response profile, whereas smaller values produce smoother, more gradual responses. To ensure physiologically plausible behaviour, all populations are kept within their dynamic range, avoiding extremes of silence or saturation.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{Figures_final/naka_rushton_og.eps}
+    \caption{Naka--Rushton functions showing how the Hill coefficient $n$ controls response steepness (Equation~\eqref{eq:NRfunc} with k=1).}
+    \label{fig:naka_rushton}
+\end{figure}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Model: Fitting Firing-Rate Data}
+\label{subsec:Model: Setting the Hill Exponent n}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+In the circuit model, each neuronal population passes its input through a Naka--Rushton function (Equation~\eqref{eq:NRfunc}). As described in the previous section, the Hill exponent $n$ governs the shape of this input--output relationship. Therefore, the choice of $n$ directly determines how sensitively each cell type responds to changes in its input and how sharply it saturates. Since different neuronal populations in the olfactory bulb exhibit different response profiles, reflecting differences in ion channel composition and intrinsic excitability, it is biologically motivated and necessary to assign a distinct value of $n$ to each cell type rather than using a single shared exponent.
+
+Rather than choosing these values by hand, we constrain them by fitting the Naka--Rushton function to experimental firing-rate curves. The fits serve two purposes. Fits to recordings from unperturbed animals provide the baseline response function of each population, while fits to recordings from sensory-deprived animals reveal which features of a cell's response change after deprivation, which guides the analysis in Section~\ref{sec:Biological Constraint}. This section describes the data, the fitting procedure, and what the fits can and cannot constrain.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Data Source}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+The Naka--Rushton function was fitted to \textit{in vitro} experimental firing-rate curves, in which the firing rate (Hz) was measured as a function of injected current (pA), which  serves as a proxy for synaptic drive.\supercite{Galliano2021} Recordings of unperturbed animals define the baseline input-output properties of each cell type under normal conditions, and are shown in Figure~\ref{fig:unperturbed}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{Figures_z/all_cells_unperturbed.eps}
+    \caption{Firing-rate curves from unperturbed mice.\supercite{Galliano2021} Each coloured line represents an individual cell of a given type. Firing rate (Hz) is recorded as a function of injected current (pA).}
+    \label{fig:unperturbed}
+\end{figure}
+
+We are also given recordings of the same cell types from occluded mice after sensory deprivation (Figure~\ref{fig:occluded}). These are not used to construct the baseline circuit, but are fitted in the same way as the unperturbed data so that the response of each cell type before and after deprivation can be compared.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{Figures_z/all_cells_occluded.eps}
+    \caption{Firing-rate curves from occluded mice.\supercite{Galliano2021} Each coloured line represents an individual cell of a given type. Firing rate (Hz) is recorded as a function of injected current (pA).}
+    \label{fig:occluded}
+\end{figure}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Fitting Procedure}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+For each cell class, a Naka--Rushton function (Equation \eqref{eq:NRfit}) was fitted to the mean firing rate $R(x)$ as a function of injected current $x$, where the firing rate represents population activity and the injected current represents the level of synaptic drive received by that population.
+
+\begin{equation}
+    R(x) \;=\; y_{\max}\,\frac{x^{n}}{x^{n} + b^n}
+    \label{eq:NRfit}
+\end{equation}
+
+Equation \eqref{eq:NRfit} has three free parameters: the Hill exponent $n$, which controls response steepness, the half-saturation constant $b > 0$, which sets the input level at which the cell reaches half its maximum firing rate, and the asymptotic firing rate $y_{\max}$, which scales the overall output. All three parameters were estimated jointly by nonlinear least squares optimisation.
+
+A practical issue may arise when fitting non-integer exponents to the experimental data because real numbers raised to a non-integer power are undefined for negative values. For example, $(-1)^{0.5}$ has no real solution and evaluates to either \texttt{NaN} or a complex number, both without any physical meaning for our model. To prevent this, inputs are clipped to be non-negative before any power is taken:
+
+\begin{equation}
+    x \;\leftarrow\; \max(x,\, 0)
+\end{equation}
+
+This is both numerically necessary as well as biologically sensible, since firing rates cannot be negative. Therefore, the clipping does not distort the fitted curve, it simply ensures that the optimisation remains well-defined throughout.
+
+Because the fit is made to the mean firing rate across cells, the data entering the fit must represent the typical response of a cell type over the range of drive that the model is intended to describe. Two subsets of the data do not, and were excluded before fitting.
+
+\begin{itemize}[left=10pt, itemsep=6pt, topsep=6pt, parsep=2pt, partopsep=0pt]
+
+\item \textbf{Red cells, high currents:} The mean firing rate of red cells stops increasing at high currents and then declines. In the unperturbed data it peaks at about 49~Hz at 235~pA, and in the occluded data at about 41~Hz at 195~pA. Over the last five current steps (255--295~pA) the mean is roughly a quarter below its peak in both conditions. A Naka--Rushton function is monotonically increasing and cannot reproduce such a decrease. Including these points would force the optimiser to compromise between the rising and the falling parts of the curve, lowering the fitted asymptote $y_{\max}$, flattening the curve where the firing rate does increase with input, and thereby biasing $n$ and $b$ as well. The decrease is likely to reflect intrinsic mechanisms at strong current injection, such as sodium channel inactivation or depolarisation block, which lie outside the input--output relationship the model is designed to capture. In addition, fewer cells contribute to the mean at high currents (at 295~pA, only 13 of the 30 unperturbed and 8 of the 30 occluded cells), so that this part of the curve is also less representative of the population. We therefore exclude the last five points (255--295~pA) from both the unperturbed and occluded red fits, which are then based on 5--245~pA.
+
+\item \textbf{Green cells, two unperturbed outliers:} Two of the ten unperturbed green cells (labelled B.4 and D.1 in the raw data) differ qualitatively from the other eight. Their recordings stop at only about 24 and 34~pA, whereas the others extend to 98~pA, they already fire at 4--29~Hz at currents at which the other cells fire at 2~Hz or less, and their firing rates then decrease with current rather than keep rising. Since the mean is computed over the cells available at each current, retaining them would inflate the mean at low currents and change the number of contributing cells abruptly where their recordings end, creating structure in the mean curve that is not representative of the population. We therefore consider them outliers that do not follow the general trend and remove them before fitting. No such exclusion was needed for the occluded green data.
+
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Fitted Exponents}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+The Naka--Rushton function provides a good description of the firing-rate curves of the red, green and mitral populations, in both conditions (Figures~\ref{fig:n_fit} and~\ref{fig:n_fit_occluded}): the fitted curves track the experimental average closely. The exception is the blue (anaxonic) population, discussed below.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{Figures_z/n_fit_all_cells_unperturbed.eps}
+    \caption{Naka--Rushton fitted to unperturbed firing-rate curves. Each panel shows the mean cell responses and 95\% confidence intervals across the recorded cells of that type (average from Figure \ref{fig:unperturbed}, after the exclusions described in the text) together with the fitted curve (Equation~\eqref{eq:NRfit}) with the inferred Hill exponent $n$, half-saturation constant $b$, and maximum firing rate $y_{max}$.}
+    \label{fig:n_fit}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{Figures_z/n_fit_all_cells_occluded.eps}
+    \caption{Naka--Rushton fitted to occluded firing-rate curves. Each panel shows the mean cell responses and 95\% confidence intervals across the recorded cells of that type (average from Figure \ref{fig:occluded}, after the exclusions described in the text) together with the fitted curve (Equation~\eqref{eq:NRfit}) with the inferred Hill exponent $n$, half-saturation constant $b$, and maximum firing rate $y_{max}$.}
+    \label{fig:n_fit_occluded}
+\end{figure}
+
+Three out of the four unperturbed Hill exponents are larger than 1, which result in curves with a sigmoidal shape. The exception is the blue (anaxonic) interneuron population, for which $n\approx 0.65<1$, producing a monotonically increasing response with no inflection point. Table~\ref{tab:nr_fit_params} lists the fitted parameters for both conditions.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Naka--Rushton fit parameters for unperturbed $\rightarrow$ occluded data.}
+  \label{tab:nr_fit_params}
+  \begin{tabular}{lccc}
+    \toprule
+    Cell type & $n$ & $b$ & $y_{\max}$ \\
+    \midrule
+    Red    & $1.85 \rightarrow 2.20$ & $107 \rightarrow 85$        & $57.3 \rightarrow 44.2$ \\
+    Green  & $1.87 \rightarrow 1.75$ & $64 \rightarrow 75$         & $24.3 \rightarrow 14.2$ \\
+    Blue   & $0.65 \rightarrow 2.83$ & $63{,}523 \rightarrow 24$   & $782 \rightarrow 5.0$ \\
+    Mitral & $1.56 \rightarrow 2.07$ & $1407 \rightarrow 450$      & $446 \rightarrow 121$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The table shows that the fits constrain the three parameters very unevenly. In most cases the recorded currents are too small for the cells to approach saturation, so the data only sample the rising part of the Naka--Rushton curve, $x \ll b$, where Equation~\eqref{eq:NRfit} reduces to
+
+\begin{equation}
+    R(x) \approx y_{\max}\left(\frac{x}{b}\right)^{n} = \frac{y_{\max}}{b^{n}}\,x^{n}.
+\end{equation}
+
+In this regime the data determine only $n$ and the combination $y_{\max}/b^{n}$. The parameters $b$ and $y_{\max}$ are individually constrained only through the weak curvature that signals the onset of saturation, and so trade off against each other: very different pairs of values give almost the same curve. Only $n$ is therefore reliably determined. The cell types differ in how well this holds:
+
+\begin{itemize}[left=10pt, itemsep=6pt, topsep=6pt, parsep=2pt, partopsep=0pt]
+
+\item \textbf{Blue:} The fits differ most here and are the least reliable. The unperturbed fit is degenerate: $b \approx 63{,}500$~pA and $y_{\max} \approx 782$~Hz, lie far outside the measured range (up to 98~pA and about 12~Hz), meaning that the optimiser has pushed the function to a power law with no saturation, and the resulting curve visibly misses the low-current region of the data. The occluded fit saturates properly ($b = 24$~pA, $y_{\max} = 5.0$~Hz, $n = 2.83$), but the mean firing rate collapses beyond about 85~pA because only four of the five cells remain. The confidence band there is very wide, and the fit sits well below the mean between 55 and 85~pA. The apparent change of the blue exponent from 0.65 to 2.83 is therefore mostly a fitting artefact rather than a physiological change, and neither number should be over-interpreted. We keep the unperturbed value for the baseline circuit, but regard it as the least well-constrained exponent of the model.
+
+\item \textbf{Mitral:} The recorded currents (up to 400~pA) lie well below the fitted semi-saturation constants (1407~pA and 450~pA), and the fitted $y_{\max}$ (446~Hz and 121~Hz) is far above the highest measured rate (about 54~Hz in both conditions). The two fits differ greatly in $b$ and $y_{\max}$ (and in $n$), yet the mean data are virtually identical, e.g. 54.0~Hz and 53.9~Hz at 400~pA. The difference in the fitted parameters therefore reflects the degeneracy described above and not a change in the response of mitral cells.
+
+\item \textbf{Green and red:} These curves are well described by the fits. For green cells, the mean firing rate after deprivation is roughly half of its unperturbed value across the whole range of currents (e.g. 9.5~Hz $\rightarrow$ 4.7~Hz at 50~pA and 16.6~Hz $\rightarrow$ 8.8~Hz at 98~pA). The fits capture this mostly as a reduction of $y_{\max}$, with little change in shape ($n$ from 1.87 to 1.75). This observation is central to Section~\ref{sec:Biological Constraint}. The red cells also change after deprivation ($n$ increases and $y_{\max}$ decreases), but this is not included in the model (see Section~\ref{sec:Conclusion}).
+
+\end{itemize}
+
+Since $b$ and $y_{\max}$ cannot be reliably determined from these data, only the Hill exponents are carried forward to the circuit model. This does not discard information that the model needs. As shown below, $b_j$ and $y_{\max,j}$ are absorbed into the synaptic weights, so that they can be set to one for every population without loss of generality. There is therefore no need to assign them values from the fits, which would in any case be expressed in pA and Hz rather than in the normalised units of the model. Because the baseline circuit describes the unperturbed state, the exponents are taken from the unperturbed fits, $n_r = 1.85$, $n_g = 1.87$, $n_b = 0.64$ and $n_y = 1.56$, and are held fixed in all subsequent circuit analyses. Fixing $n_j$ is supported by the green fit above, where the change after deprivation is small compared with the change in $y_{\max}$, and by the fact that the occluded exponents of blue and mitral cells cannot be reliably determined.
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Reparameterisation of Fitted Functions}
+\label{subsubsec:Reparameterisation}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+For computational efficiency, all inputs are rescaled as $x' = x/b_j$, which normalises the semi-saturation point to unity across all populations, and all firing rates are expressed in units of the maximal rate $y_{\max,j}$, so that the response of every population lies between 0 and 1:
+
+\begin{equation}
+    \sigma_j(x') = \frac{x'^{~n_j}}{x'^{~n_j}+1}
+    \label{eq:NRfuncprime}
+\end{equation}
+
+This rescaling is a valid reparameterisation, as neither $b_j$ nor $y_{\max,j}$ is removed from the model but rather absorbed into the synaptic weights $w$, which are now permitted to take any positive value. Dividing the input to population $j$ by $b_j$ is equivalent to dividing every incoming weight $w_{i,j}$ by $b_j$. Similarly, the activity of population $i$ reaches a postsynaptic population $j$ as $w_{i,j}\,y_{\max,i}\,\sigma_i$, so that $y_{\max,i}$ is equivalent to multiplying every outgoing weight of population $i$ by $y_{\max,i}$. Since the weights are free parameters determined later by the baseline optimisation, rather than measured quantities, we can choose $b_j = y_{\max,j} = 1$ for every population without loss of generality. This reparameterisation does not alter what the model can represent, it simply reduces the number of free parameters it contains and simplifies its numerical implementation. The only cost is that the weights are expressed in normalised units, so that their relative values and relative changes, rather than their absolute values, are meaningful.
+
+There is one exception. The green population retains its maximal rate $y_{\max,g}$ as an explicit parameter, so that its output is $g = y_{\max,g}\,\sigma_g(\cdot)$. The experimentally observed change in the excitability of green cells is best captured by this parameter, and absorbing it into the weights would hide this intrinsic change among synaptic ones. This choice is justified in Section~\ref{sec:Biological Constraint}.
+
+Figure~\ref{fig:naka_rushton_fixed} compares the reparameterised Naka-–Rushton functions (Equation~\eqref{eq:NRfuncprime}) for the four cell types using the experimentally fitted Hill exponents $n_j$ of the unperturbed data.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{Figures_final/Naka_Rushton.eps}
+    \caption{Naka--Rushton function with fixed $n$ for each population (normalised Equation~\eqref{eq:NRfuncprime}). Steeper curves correspond to larger $n$.}
+    \label{fig:naka_rushton_fixed}
+\end{figure}
+
+% The values of $n$ obtained from these fits are held fixed throughout all subsequent circuit analyses (Figure~\ref{fig:naka_rushton_fixed}). This is consistent with the assumption established earlier that $n_j$ can be treated as fixed properties of each cell type rather than free parameters.  
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Model: Olfactory Bulb}
+\label{subsec:Model: Olfactory Bulb}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+With the key neuron types and their connectivity established, we now construct a mathematical model of the OB using the neuronal input--output model described in Section \ref{subsec:key neuron types}. 
+
+The model is built on several simplifying assumptions, each motivated by the goal of capturing essential circuit behaviour while keeping the number of free parameters manageable:
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Model Assumptions}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{itemize}
+    \item \textbf{One representative cell per population:} Rather than simulating every individual neuron, each cell class is represented by a single unit whose activity reflects the average firing rate of that population. This approximation is standard in circuit-level modelling and is appropriate here because we are interested in the collective behaviour of each cell type, i.e. how strongly a population is driven and how it influences others, rather than cell-to-cell interactions.
+
+    \item \textbf{Two glomeruli:} A single glomerulus would suffice if all inhibitory interactions were local, but the axonic (green, see Figure \ref{fig:OB_1}) interneurons project laterally across glomeruli, providing cross-glomerular inhibition that is an important feature of OB circuit. Having two glomeruli is the minimal architecture that captures this inter-glomerular coupling while keeping the model compact. Anaxonic (blue) interneurons, by contrast, are assumed to inhibit only within their own glomerulus.
+
+    \item \textbf{Steady-state firing rates:} Since the aim is to study homeostatic plasticity, the model focuses on steady-state firing rates rather than transient dynamics. Temporal differential equations are therefore not required. Instead, the model defines a set of algebraic constraints that the firing rates must satisfy at equilibrium. This substantially reduces the complexity of the model without sacrificing the features relevant to homeostatic regulation.
+
+    \item \textbf{Symmetric weight sharing:} To further reduce the number of free parameters, corresponding synaptic connections are constrained to be identical across the two glomeruli. For example, the weight from blue to green neurons in glomerulus 2 is set equal to that in glomerulus 1. This symmetry assumption is reasonable given that the two glomeruli are treated as structurally equivalent, and it ensures that differences in activity between glomeruli arise only from differences in sensory input rather than from asymmetric connectivity.
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Circuit Equations}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Under the assumptions above, the biological connectivity sketched in Figure~\ref{fig:OB_1} is reduced to the circuit shown in Figure~\ref{fig:OB_circuit}, where each arrow in the schematic represents a synaptic connections. The algebraic form of these connections is given below.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{Figures/OB_circuit.png}
+    \caption{Simplified OB circuit used in the model. Excitatory (+) and inhibitory (-) connections between the blue ($b$), red ($r$), green ($g$), mitral ($y$), and granule ($gr$) populations follow the architecture of Figure~\ref{fig:OB_1} after applying the assumptions.}
+    \label{fig:OB_circuit}
+\end{figure}
+
+\newpage
+The steady-state firing rates of the blue ($b$), red ($r$), green ($g$), mitral ($y$), and granule ($gr$) cell populations are given by:
+\begin{align}
+    b   &= \sigma_b \left(w_{\text{osn},b}\,\alpha x\right) \label{eq:b}\\
+    r   &= \sigma_r \left(w_{\text{osn},r}\,\alpha x - w_{b,r}\, b - \mathbf{W}_{g,r}\, g \right) \label{eq:r}\\
+    g   &= y_{\max,g}\,\sigma_g \left(w_{\text{osn},g}\,\alpha x - w_{b,g}\, b + {w}_{r,g}\, r \right) \label{eq:g}\\
+    y   &= \sigma_y \left(w_{\text{osn},y}\,\alpha x - w_{b,y}\, b - \mathbf{W}_{g,y}\, g + w_{r,y}\, r - w_{gr,y}\, gr\right) \label{eq:y}\\
+    gr  &= \sigma_gr \left(w_{\text{cor},gr}\, \text{cortex} + w_{y,gr}\, y \right) \label{eq:gr}
+\end{align}
+
+Here $\sigma_j$ denotes the Naka--Rushton function (Equation~\eqref{eq:NRfuncprime}) with fixed population-specific exponents $n_r = 1.85$, $n_g = 1.87$, $n_b = 0.64$ and $n_y = 1.56$, taken from the fits to unperturbed data (Section~\ref{subsec:Model: Setting the Hill Exponent n}). Each weight $w_{i,j}$ encodes the synaptic strength of the connection from population $i$ to population $j$, and is rescaled by the semi-saturation constant of the postsynaptic population $j$ and the maximal rate of the presynaptic population $i$ to account for the reparameterisation described in the same section. The only maximal rate retained explicitly is that of the green population, $y_{\max,g}$ in Equation~\eqref{eq:g}, and setting $y_{\max,g}=1$ recovers the fully normalised model.
+
+The parameter $\alpha \in [0,1]$ accounts for feedback from anaxonic (blue) interneurons onto the OSN. Therefore, in the steady-state equations, the downstream populations only see a fraction $\alpha$ of the initial sensory input $x$. In the initial configuration, the sensory input to both glomeruli is set to $x=1$.
+
+Connections that are local to a glomerulus appear as scalar weights (e.g. $w_{b,g}$). However, connections from green interneurons to red or mitral cells in the other glomerulus are represented by $2 \times 2$ matrices $\mathbf{W}_{g,r}$ and $\mathbf{W}_{g,y}$: 
+
+\begin{equation}
+    \mathbf{W}_{g,r} =
+    \begin{bmatrix}
+        0 & w_{g_1,r_2} \\
+        w_{g_2,r_1} & 0
+    \end{bmatrix}
+     \qquad \qquad
+    \mathbf{W}_{g,y} =
+    \begin{bmatrix}
+        0 & w_{g_1,y_2} \\
+        w_{g_2,y_1} & 0
+    \end{bmatrix}
+\end{equation}
+
+\noindent where the zero diagonal entries reflect the absence of intra-glomerular projections from green cells, and   $w_{g_1,r_2} = w_{g_2,r_1}$ and $w_{g_1,y_2} = w_{g_2,y_1}$ reduce each matrix to a single free parameter.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Model: Fixed-Point Iteration}
+\label{subsec:Model: Fixed point iteration}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+The circuit equations (Equations~\eqref{eq:b}--\eqref{eq:gr}) form a nonlinear system in which the firing rates of all populations are coupled through recurrent connections, for which there is no obvious analytical solution. We therefore solve them numerically as fixed-point problems, identifying activity states in which each population's output is self-consistent with the inputs it receives from the rest of the circuit.
+
+Simple fixed-point iteration can converge slowly or fail when recurrent coupling is strong. Therefore, we use Anderson acceleration,\supercite{AndersonAcceleration} which improves convergence by forming the next iterate as a linear combination of several recent updates rather than relying solely on the most recent one. Intuitively, this allows the solver to extrapolate from the trend of previous iterates, damping oscillations that would otherwise slow or prevent convergence. Typically, we use a history of 5 iterates, a convergence tolerance of $10^{-10}$, and a maximum of 50 iterations, which reliably finds the fixed point.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Intra-glomerular loop ($r$ and $g$)} 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Equations~\eqref{eq:r} and~\eqref{eq:g} form a coupled fixed-point problem in which the red (ETC) population provides excitatory drive to the green (axonic) population, which in turn projects inhibitory feedback onto the ETCs. This reciprocal coupling is resolved using Anderson acceleration, with the hyperparameters described above.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Mitral--granule loop ($y$ and $gr$)} 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Equations~\eqref{eq:y} and~\eqref{eq:gr} form a second fixed-point problem. Mitral cell activity drives granule cells through excitatory synapses, while granule cells in turn inhibit mitral cells via dendrodendritic feedback, creating a second recurrent loop. In principle, the same Anderson acceleration scheme could be applied here. 
+
+However, the granule cell equation (Equation~\eqref{eq:gr}) includes a cortical input term that is both highly variable and poorly constrained by available experimental data. Current evidence suggests that cortical projections to granule cells are more closely associated with context-dependent modulation and associative learning than with the homeostatic regulation, the focus of this project.\supercite{Wen2024} 
+
+Including an unconstrained cortical drive would therefore introduce a free parameter that could not be reliably estimated and might obscure the homeostatic mechanisms of interest. For these reasons, granule cells are excluded from the circuit analysis. 
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Model: Parameter Initialisation}
+\label{subsec:Model: Parameter Initialisation}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Before modelling the effects of sensory deprivation, we must first identify a set of parameters $\theta = \{w_{osn,r}, w_{osn,b}, w_{osn,g}, w_{osn,y}, w_{b,r}, w_{b,g}, w_{b,y}, w_{r,y}, w_{r,g}, \alpha, W_{g,r}, W_{g,y}, y_{\max,g}\}$ (thirteen parameters in total) that produces a plausible baseline state of the circuit, one that is consistent with normal, unperturbed OB function. Two conditions must be satisfied simultaneously, the mitral cell output $y$ should match a prescribed target value, and the firing rates of all populations should be within their dynamic range.
+
+Regarding the second condition, the Naka--Rushton function saturates at both ends. Near zero input, changes in drive produce almost no change in firing rate, and similarly near saturation. A neuron operating at either extreme is effectively unable to respond to changes in its input and therefore conveys little information about the circuit state. 
+
+From a homeostatic perspective, this is problematic as a saturated population has no capacity to increase its output further, and a silent population cannot reduce its output.
+Neurons operating near the midpoint of their dynamic range, around a normalised firing rate of 0.5, are maximally sensitive to input changes and retain the capacity to both increase and decrease their output in response to perturbations. Therefore, for a nominal input $x=1$, we set 0.5 as the target firing rate for all cell populations. For the green population, the target applies to its actual firing rate $g = y_{\max,g}\,\sigma_g$.
+
+Finding parameters that satisfy these conditions is formulated as a 
+least-squares optimisation problem, where the loss function penalises 
+deviations of each population's firing rate from the target value of 0.5:
+
+\begin{align}
+L(\theta) = \sum_{i=1}^{m} \Big[ &(r_i - r_{t,i})^2
++ (g_i - g_{t,i})^2
++ (b_i - b_{t,i})^2
++ (y_i - y_{t,i})^2 \Big]
+\label{eq:loss}
+\end{align}
+
+\noindent where $m = 2$ is the number of glomeruli, and $r_i$, $g_i$, $b_i$, $y_i$ are the steady-state firing rates of the red, green, blue, and mitral cell populations, respectively, and $r_{t,i} = g_{t,i} = b_{t,i} = y_{t,i} = 0.5$ are the target rates for all $i$. To ensure biological plausibility, synaptic weights and $y_{\max,g}$ are clipped to be non-negative and $\alpha$ is restricted to $[0,1]$ throughout the optimisation. Each optimisation starts from a parameter vector drawn uniformly from $[0,1]^{13}$.
+
+\newpage
+We minimise $L(\theta)$ using the Adam optimiser, which adapts the learning rate for each parameter individually using exponentially weighted averages of past gradients ($\beta_1 = 0.9$) and squared gradients ($\beta_2 = 0.99$), with an initial learning rate of 0.03 that is reduced tenfold after 400 of the 800 iterations, and with the gradient norm clipped to 3 for stability.\supercite{kingma2015adam} This adaptive scheme is more robust than standard gradient descent when parameters differ in scale or the loss landscape is highly nonlinear, both of which are likely given the circuit structure. The algorithm is implemented in JAX/Optax with JIT compilation, which enables efficient automatic differentiation through the fixed-point solver.\supercite{jax2018github}.  
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{Figures_final/loss_convergence.eps}
+    \caption{Loss $L(\theta)$ during Adam optimisation across 1000 random initialisations, with each coloured line representing a different initialisation. Curves that reach near-zero ($<10^{-12}$) loss correspond to the 562 parameter sets retained for later analysis. The remaining 438 initialisations failed to converge and are discarded.}
+    \label{fig:adam_opt}
+\end{figure}
+
+Optimised parameter sets are retained only if the outputs of all cell types fall within $[0.4, 0.6]$. Those outside this range are discarded. Of the 1000 random initialisations, 562 satisfy this criterion and are carried forward for subsequent analysis, and these reproduce the target of 0.5 to within $2\times10^{-7}$. The remaining 438 initialisations become stuck at a non-zero loss, typically because a population has been silenced. Its input falls below zero, where the Naka--Rushton output and its gradient vanish, so that the optimiser cannot recover. The retained solutions keep every population within its dynamic range. For the green population, whose rate is $y_{\max,g}\,\sigma_g$, the retained values of $y_{\max,g}$ lie between 0.62 and 1.24, so that it operates between roughly 40\% and 80\% of its own maximum.
+
+As shown in Figure~\ref{fig:adam_opt}, the loss converges reliably across the 562 retained initialisations. However, the optimised parameters are not unique. Figure~\ref{fig:theta_opt_raw} shows the distribution of raw parameter values across all retained solutions. Many different combinations of synaptic weights and $\alpha$ values can produce the required target firing rate. This degeneracy is a consequence of the circuit having more free parameters than constraints, a situation that is unavoidable in a model of this complexity. Rather than treating this as a problem, we embrace it.
+The full set of valid parameter solutions forms a family of circuits that all satisfy the same criteria. We can use this set to ask which properties are shared across solutions, and are therefore robust features of the model.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{Figures_final/theta_opt_raw.eps}
+    \caption{Raw parameter values across all 562 retained solutions. The spread across solutions reflects the degeneracy of the optimisation problem. Each colour represents a different retained parameter set.}
+    \label{fig:theta_opt_raw}
+\end{figure}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Model: Stability Analysis}
+\label{subsec:Model: stability analysis}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+The optimisation procedure in the previous section identifies parameter configurations that satisfy the target firing-rate conditions at steady state. However, satisfying the fixed-point equations is a necessary but not sufficient condition for biological plausibility. In a real neural circuit, activity is subject to continuous perturbation from noise, fluctuating inputs, and ongoing network dynamics. A biologically viable operating point must therefore not only exist as a fixed point but also be stable, i.e. small deviations from the steady state should decay over time rather than grow. We therefore assess the local stability of each identified fixed point before using it in further analyses.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Network dynamics model}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+To assess stability, we require a model of how firing rates evolve over time. We adopt the standard continuous-time firing-rate equation:\supercite{Dayan2001}
+
+\begin{equation}
+\tau \frac{ds}{dt} = -s + F(s, \theta, x)
+\label{eq:network_dynamics}
+\end{equation}
+
+\noindent where $s(t) = [r(t),\, g(t),\, b(t),\, y(t)]^\top$ is the vector of population firing rates, $\theta$ are the synaptic weight parameters, $x$ is the external sensory input, and $\tau > 0$ is the characteristic time constant governing how quickly firing rates respond to changes in input. The term $-s$ represents the passive decay of activity in the absence of drive, ensuring that firing rates return to zero if all inputs are removed.
+
+The function $F$ describes the network response obtained from the circuit equations (Equations~\eqref{eq:b}--\eqref{eq:y}), evaluated using the current  firing rates $s(t)$ rather than their steady state values:
+
+\begin{align}
+F(s, \theta, x) &=
+\begin{bmatrix}
+F_r(s,\theta,x) \\
+F_g(s,\theta,x) \\
+F_b(s,\theta,x) \\
+F_y(s,\theta,x)
+\end{bmatrix}=
+\begin{bmatrix}
+\sigma \left(w_{\text{osn},r}\,\alpha x - w_{b,r}\, b - \mathbf{W}_{g,r}\, g \right) \\
+y_{\max,g}\,\sigma \left(w_{\text{osn},g}\,\alpha x - w_{b,g}\, b + w_{r,g}\, r \right) \\
+\sigma \left(w_{\text{osn},b}\,\alpha x \right) \\
+\sigma \left(w_{\text{osn},y}\,\alpha x - w_{b,y}\, b - \mathbf{W}_{g,y}\, g + w_{r,y}\, r \right)
+\end{bmatrix}
+\end{align}
+
+A steady-state solution $s^\ast$ satisfies $ds/dt = 0$, and therefore, Equation~\eqref{eq:network_dynamics} implies that fixed points must satisfy:
+
+\begin{equation}
+F(s^\ast, \theta, x) = s^\ast
+\label{eq:fixed_point}
+\end{equation}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Linearisation}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+To determine whether $s^\ast$ is stable, we analyse the behaviour of small perturbations around it. Writing $s(t) = s^\ast + \delta(t)$, where $\delta(t)$ represents a small deviation from the fixed point, and substituting into Equation~\eqref{eq:network_dynamics}:
+
+\begin{equation}
+\tau \frac{d\delta}{dt} = -(s^\ast + \delta) + F(s^\ast + \delta,\, \theta,\, x)
+\label{eq:perturb_sub}
+\end{equation}
+
+% Since $s^\ast$ is constant, $ds^\ast/dt = 0$. 
+Expanding $F$ in a first-order Taylor series around $s^\ast$:
+
+\begin{equation}
+F(s^\ast + \delta,\, \theta,\, x) \approx F(s^\ast,\, \theta,\, x) + \mathbf{J}\, \delta
+\label{eq:taylor}
+\end{equation}
+
+\noindent where $\mathbf{J} = \left.\partial F / \partial s\right|_{s^\ast}$ is the Jacobian of $F$ evaluated at the fixed point. Substituting Equation \eqref{eq:taylor} in  Equation \eqref{eq:perturb_sub}, applying the fixed-point condition $F(s^\ast, \theta, x) = s^\ast$ and simplifying we obtain the linear differential equation governing the evolution of perturbations around the fixed point:
+
+\begin{equation}
+\frac{d\delta}{dt} = \frac{1}{\tau}(\mathbf{J} - \mathbf{I})\, \delta = \mathbf{A}\, \delta
+\label{eq:linear_system}
+\end{equation}
+
+\noindent where $\mathbf{A} = (\mathbf{J} - \mathbf{I})/\tau$ is the linearised system matrix. This is a linear ordinary differential equation whose solution is $\delta(t) = e^{\mathbf{A}t} \delta(0)$. Therefore, the fixed point is locally asymptotically stable if and only if all eigenvalues of $\mathbf{A}$ have strictly negative real parts, so that perturbations decay exponentially to zero. Since $\tau > 0$ rescales all eigenvalues uniformly without changing their signs, stability depends entirely on the eigenvalues of $\mathbf{J} - \mathbf{I}$.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Stability Results}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Figure~\ref{fig:stability} shows the real parts of the eigenvalues of $\mathbf{A}$ across all 562 retained parameter configurations. All eigenvalues have strictly negative real parts, confirming that every identified fixed point is locally stable. This provides confidence that the baseline parameter solutions represent viable operating points that the circuit could maintain in the presence of small perturbations.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{Figures_final/stability.eps}
+    \caption{Real parts of the eigenvalues of $\mathbf{A}$ across all 562 retained parameter configurations. All values are strictly negative, confirming local asymptotic stability at every identified fixed point.}
+    \label{fig:stability}
+\end{figure}
+
+Many eigenvalues lie close to \(-1/\tau\), which follows from the structure of the linearised system. Each neuronal population depends only on a subset of the network variables (Equations~\eqref{eq:r}--\eqref{eq:y}), so Jacobian \(\mathbf{J}\) is sparse and its off-diagonal coupling terms are generally small. Consequently, the dominant contribution to the dynamics comes from the decay term \(-s\) in Equation~\eqref{eq:network_dynamics}, which contributes the diagonal term \(-\mathbf{I}/\tau\) in Equation~\eqref{eq:linear_system}. Along weakly coupled directions of state space, the eigenvalues therefore remain close to \(-1/\tau\).
+
+\newpage
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Homeostatic Plasticity (HP): $\Delta \theta$ Preserving Output}
+\label{sec:Homeostatic_plasticity}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+The sensory deprivation experiment described in Section~\ref{subsec:OB:sensory deprivation} raises the following question: how does the olfactory bulb circuit maintain stable output despite the axon initial segment (AIS) shrinkage in the green neurons induced by sensory deprivation? 
+Given that dopaminergic axonic interneurons exhibit a reduction in AIS length and therefore provide less drive to mitral cells, the preservation of stable mitral cell output suggests that compensatory mechanisms must emerge elsewhere in the circuit.
+
+Formally, we seek to characterise the set of parameter changes $\Delta\theta$ that leave the circuit output $y$ unchanged. In other words, we want to identify directions in parameter space along which the system can evolve without altering mitral cell output. 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{HP: Taylor Expansion of the Output}
+\label{subsec:Homeostatic_plasticity: Taylor Expansion of the Output}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+To characterise output-preserving parameter changes analytically, we expand the mitral cell output $y$ as a function of parameters in a second-order Taylor series around the previously optimised baseline parameter sets $\theta_o$ from Section~\ref{subsec:Model: Parameter Initialisation}:
+
+\begin{align}
+y(\theta_o + \Delta\theta) \approx\; y(\theta_o)
++ \mathrm{grad}^T \Delta\theta
++ \frac{1}{2} \Delta\theta^T \mathbf{H}\, \Delta\theta
++ \mathcal{O}(\|\Delta\theta\|^3)
+\label{eq:taylor_output}
+\end{align}
+
+\noindent where $y$ is the mitral cell readout, $\mathrm{grad} = \nabla_\theta y(\theta_o)$ is the output gradient with respect to the parameters, and $\mathbf{H} = \nabla_\theta^2 y(\theta_o)$ is the corresponding Hessian matrix. Both $\mathrm{grad}$ and $\mathbf{H}$ are evaluated at each baseline initialisation $\theta_o$ and computed via automatic differentiation through the fixed-point solver using JAX. 
+
+The condition for the output to remain unchanged after a (small) parameter perturbation,
+$y(\theta_o + \Delta\theta) \approx y(\theta_o)$, reduces to:
+
+\begin{equation}
+\mathrm{grad}^T \Delta\theta + \frac{1}{2}\, \Delta\theta^T \mathbf{H}\, \Delta\theta \approx 0
+\label{eq:delta_y}
+\end{equation}
+
+Equation~\eqref{eq:delta_y} can be satisfied in two ways.
+In the first scenario, the first- and second-order contributions cancel each other out, so that perturbations with a nonzero linear effect on the output are offset by curvature-induced corrections, producing finely tuned parameter combinations that preserve the output. Biologically, this corresponds to a regime of delicate compensation requiring coordinated adjustments across parameters and precise alignment between perturbation directions and local curvature in parameter space. These tight requirements make this regime an unlikely approach for robust biological regulation.
+
+In the second scenario, both the first- and second-order contributions  vanish to zero. The linear term vanishes whenever the perturbation $\Delta\theta$ is orthogonal to the gradient, i.e. when $\mathrm{grad}^T \Delta\theta = 0$. The quadratic term vanishes when $\Delta\theta$ aligns with eigenvectors of the Hessian associated with near-zero eigenvalues, i.e. locally flat curvature directions. Together, these conditions define a locally output-invariant subspace in parameter space within which synaptic weights can vary without significantly affecting circuit output. Assuming such a subspace exists, this regime offers a more robust route to output invariance and is therefore a more plausible candidate for homeostatic regulation.
+
+We therefore focus on this second scenario and identify the output-invariant subspace as the set of parameter directions $\Delta\theta$ that satisfy two conditions: they are orthogonal to the gradient ($\mathrm{grad}^T \Delta\theta = 0$), and they align with eigenvectors of the Hessian whose eigenvalues are approximately zero ($|\lambda_i| \approx 0$). Moving along any direction in this subspace leaves the circuit output unchanged.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{HP: Computing the Hessian}
+\label{subsec:Homeostatic_plasticity: Computing the Hessian}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Having established that output-preserving parameter changes lie along directions that are both perpendicular to the gradient $\text{grad}$ and aligned with eigenvectors of the Hessian $\mathbf{H}$ with near-zero eigenvalues (Section \ref{subsec:Homeostatic_plasticity: Taylor Expansion of the Output}), we now compute $\mathbf{H}$ explicitly for each of the baseline initialisation parameter set identified in Section \ref{subsec:Model: Parameter Initialisation}.
+
+Because the circuit contains two glomeruli, the mitral cell output is a two-dimensional vector $(y_1, y_2)$. To define a scalar-valued Hessian, we let the readout to be $y = y_1 + y_2$ and compute:
+
+\begin{equation}
+    \mathbf{H} = \nabla^2_\theta y(\theta_o)
+\end{equation}
+
+This choice is natural given the symmetric structure of the two-glomerulus model, i.e. both mitral cells are treated equivalently, and their summed output captures the total network drive to downstream cortical areas. The Hessian is computed via automatic differentiation using reverse-mode Jacobians in JAX ($H=\texttt{jax.jacrev(jax.grad(f))}$), which is efficient and numerically stable for scalar objectives. This avoids the fragility of pushing forward‑mode through fixed‑point solvers, where implicit differentiation is used.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{Figures_final/hessian_eigenvalues.eps}
+    \caption{Distribution of eigenvalue magnitudes $|\lambda_i|$ of the Hessian $\mathbf{H}$ across all retained baseline parameters. Four eigenvalues are consistently small relative to the rest, revealing a near-null subspace of dimension four.}
+    \label{fig:e_values_of_H}
+\end{figure}
+
+Figure~\ref{fig:e_values_of_H} shows the distribution of Hessian eigenvalue magnitudes $|\lambda_i|$ across all retained parameter sets. A consistent structure emerges. Four of the thirteen eigenvalues (of order $10^{-8}$) are smaller than the other nine (between $10^{-2}$ and $10^{0}$) by many orders of magnitude, indicating the presence of a near-null subspace of dimension four in the thirteen-dimensional parameter space. We classify an eigenvalue as near-zero if $|\lambda_i| < 10^{-5}$, which separates the two groups at every baseline. Perturbations along the corresponding eigenvectors change the output very little (to second order in $\Delta\theta$) making them natural candidate directions for homeostatic compensation. By contrast, the nine large eigenvalues are of mixed sign (typically five negative and four positive), as $\mathbf{H}$ is the Hessian of the output rather than of a loss at a minimum. This indefiniteness will matter in Section~\ref{subsec:direct solve}.
+
+%This analysis produces, for each of the $N=562$ retained parameter solutions, a set of four output-preserving directions in the thirteen-dimensional parameter space $\theta$. 
+
+The next step is to ask whether these directions are consistent across parameter sets. In other words, whether different parameter configurations agree on which weight changes leave the output unchanged. If this is the case, this would suggest that the output-preserving subspace is a robust feature of the circuit structure.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{HP: Common Subspace}
+\label{subsec:Homeostatic_plasticity: Common Subspace}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+For each retained baseline parameter, the Hessian analysis produces four eigenvectors that span a near-null subspace. Concatenating these across all $N = 562$ parameter sets produces a collection of ($2248 = 4 \times 562$) vectors in the thirteen-dimensional parameter space. Directly analysing such a large collection is difficult, and there is no guarantee that the vectors from different solutions are aligned. Therefore, we seek a simpler representation of the common structure shared across all solutions.
+
+To identify the dominant directions that appear most consistently across parameter sets, we apply singular value decomposition (SVD) to the $[13 \times 4N]$ matrix obtained by stacking all eigenvectors column-wise:
+
+\begin{equation}
+    \mathbf{V} = \mathbf{U}\, \mathbf{\Sigma}\, \mathbf{W}^T
+\end{equation}
+
+The columns of $\mathbf{U}$ are the left singular vectors, which define orthonormal directions in parameter space, and the diagonal entries of $\mathbf{\Sigma}$ are the corresponding singular values. A large singular value indicates that a particular direction in parameter space recurs frequently across the collection of eigenvectors. This means that it is a direction many different independent parameter sets agree is output-preserving. On the other hand, small singular values correspond to directions that appear only sporadically.
+
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{Figures_final/svd_singular_values.eps}
+    \caption{Singular values of the stacked near-null eigenvector matrix across all parameter sets.}
+    \label{fig:svd}
+\end{figure}
+
+Figure~\ref{fig:svd} shows the singular values. A clear structure is visible, where the first four singular values are substantially larger than the rest, suggesting that the near-null subspaces of different parameter solutions share a common four-dimensional structure. Each of these four singular values is close to $\sqrt{N} \approx 23.7$, which is what would be expected if the same four-dimensional subspace were found at every baseline, and together they account for about 99\% of the total squared singular values. We take the four leading left singular vectors of $\mathbf{U}$ as a basis for this common output-preserving subspace.
+
+This result is biologically significant because it suggests that the directions in synaptic weight space that preserve circuit output are not unique to any single parameter configuration. Instead, they appear to be a general property of the olfactory bulb network architecture.
+
+The four basis vectors involve ten of the thirteen parameters, namely the synaptic weights $w_{osn,r}$, $w_{osn,g}$, $w_{osn,y}$, $w_{b,r}$, $w_{b,g}$, $w_{b,y}$, $w_{r,y}$, $w_{r,g}$, $W_{g,r}$ and $W_{g,y}$, whereas $w_{osn,b}$, $\alpha$ and $y_{\max,g}$ have zero weight in all four. We also checked that the output gradient has negligible projection onto this subspace (the median norm of the projection of the normalised gradient is $1.5\times10^{-3}$), so that both conditions for output preservation are met. Each basis vector is, however, a dense linear combination of these ten parameters. The subspace therefore tells us which combinations of weights could change without affecting the output, but not which of them the olfactory bulb actually uses. Making a prediction requires experimental constraints, which we introduce in the next section. In particular, the absence of $y_{\max,g}$ from the subspace will turn out to matter.
+
+
+
+
+\newpage
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Biological Constraints}
+\label{sec:Biological Constraint}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Section~\ref{sec:Homeostatic_plasticity} characterised how the parameters of the circuit can change without affecting its output, but it did so without using any information about what actually happens in the olfactory bulb following sensory deprivation. We now bring in this experimental information. As described in Section~\ref{subsec:OB:sensory deprivation}, sensory deprivation shrinks the axon initial segment (AIS) of axonic (green) interneurons.\supercite{Galliano2021} The AIS is the cellular subcompartment where voltage-gated sodium channels are clustered and so where action potentials are initiated. Therefore, a shorter AIS is associated with decreased neuronal excitability. This decrease is also visible directly in the input--output relationship between injected current and firing rate of green cells (Section~\ref{subsec:Model: Setting the Hill Exponent n}): after deprivation, their mean firing rate is roughly halved at all currents (Figures~\ref{fig:n_fit} and~\ref{fig:n_fit_occluded}). This is a uniform scaling of the response, rather than a shift or a change in its steepness.
+
+To include this effect, the change in excitability must be represented by a parameter of the model. The weights $w$ describe synaptic connections, so intrinsic excitability has to enter through the response function of the green population, which has three parameters: the Hill exponent $n_g$, the semi-saturation constant $b_g$, and the maximal rate $y_{\max,g}$. We consider each in turn.
+
+\begin{itemize}[left=10pt, itemsep=6pt, topsep=6pt, parsep=2pt, partopsep=0pt]
+
+\item \textbf{Hill exponent $n_g$:} For a population receiving normalised input $u$, the effect of $n$ on the output $\sigma(u)$ is
+\begin{equation}
+    \frac{\partial \sigma}{\partial n} = \sigma(1-\sigma)\,\ln u
+\end{equation}
+which changes sign at $u=1$, the semi-saturation point. Increasing $n$ raises the output of a cell operating above semi-saturation ($u>1$) but lowers the output of a cell operating below it ($u<1$). A decrease in excitability therefore does not correspond to a definite direction of change in $n_g$, as this depends on which side of the semi-saturation point the cell operates, and this is not known. Moreover, the sensitivity vanishes at $u=1$, where a population firing at half of its maximum rate sits. Since the baseline circuit places populations in the middle of their dynamic range (Section~\ref{subsec:Model: Parameter Initialisation}), its output is only weakly sensitive to $n_g$ at a single operating point, and a second operating point (a different level of input) would be required to probe it. The data also point away from $n_g$, as its fitted value changes only modestly after deprivation (1.87 to 1.75).
+
+\item \textbf{Semi-saturation constant $b_g$:} Increasing $b_g$ always lowers the output, so its effect has a definite sign. However, $b_g$ divides all three inputs to the green population ($w_{osn,g}$, $w_{b,g}$ and $w_{r,g}$), and was therefore absorbed into these weights by the reparameterisation (Section~\ref{subsec:Model: Setting the Hill Exponent n}). A change in $b_g$ is thus mathematically equivalent to a simultaneous rescaling of these three weights and cannot be distinguished from synaptic plasticity. As seen in Section~\ref{subsec:Model: Setting the Hill Exponent n}, $b$ is in any case poorly constrained by the data.
+
+\item \textbf{Maximal rate $y_{\max,g}$:} Since $g = y_{\max,g}\,\sigma_g$, we have $\partial g/\partial y_{\max,g} = \sigma_g \geq 0$ for every input. Decreasing $y_{\max,g}$ therefore lowers the output of green cells unambiguously and at every operating point, so that a single operating point is sufficient to determine its effect on the circuit. It also describes what is observed experimentally, a downward scaling of the firing-rate curve. The fitted $y_{\max}$ of green cells falls from 24.3~Hz to 14.2~Hz, although, as discussed in Section~\ref{subsec:Model: Setting the Hill Exponent n}, the absolute values of $y_{\max}$ are poorly constrained, and the halving of the measured firing rates does not rely on the fit.
+
+\end{itemize}
+
+We therefore introduce $y_{\max,g}$ as an explicit parameter, extending the parameter vector to thirteen dimensions, as used in Sections~\ref{subsec:Model: Parameter Initialisation} and~\ref{sec:Homeostatic_plasticity}. Since Section~\ref{subsec:Model: Setting the Hill Exponent n} showed that maximal rates can be absorbed into outgoing weights, it is worth clarifying why $y_{\max,g}$ is not redundant with $\mathbf{W}_{g,r}$ and $\mathbf{W}_{g,y}$. Rescaling $(y_{\max,g},\, \mathbf{W}_{g,r},\, \mathbf{W}_{g,y}) \rightarrow (c\,y_{\max,g},\, \mathbf{W}_{g,r}/c,\, \mathbf{W}_{g,y}/c)$ leaves $r$ and $y$ unchanged but multiplies $g$ by $c$. The baseline circuit fixes the green firing rate at $g = 0.5$ (Section~\ref{subsec:Model: Parameter Initialisation}), so the three parameters are not interchangeable: lowering $y_{\max,g}$ while the green rate is held fixed requires a larger input to the green cell. Keeping $y_{\max,g}$ explicit therefore separates the intrinsic change in green cells from the synaptic changes in their outgoing connections.
+
+Experimental recordings also show that green cells receive more frequent and stronger inhibitory signals from blue cells following sensory deprivation, corresponding to an increase in $w_{b,g}$ (E. Galliano, personal communication, 2026, Appendix \ref{app:Elisa_results}(A)). We do not impose this as a constraint, but use it in Section~\ref{subsec:Predicted changes} to assess the predicted changes.
+
+The question we now ask is: given that $y_{\max,g}$ decreases (while the response functions of the other populations are kept unchanged), what compensatory adjustments in the remaining parameters are required to preserve mitral cell output?
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Homeostatic Plasticity: Varying $y_{\max,g}$}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+We first ask whether the output-preserving subspace identified in Section~\ref{subsec:Homeostatic_plasticity: Common Subspace} can accommodate a change in $y_{\max,g}$. That subspace was computed for the full thirteen-dimensional parameter vector, so $y_{\max,g}$ is already one of its coordinates. Inspection of the four basis vectors shows that their $y_{\max,g}$ component is zero (below $10^{-8}$) in all four, and the same holds for $w_{osn,b}$ and $\alpha$. This means that any step along a basis vector leaves $y_{\max,g}$ unchanged. This contradicts the experimental observation that $y_{\max,g}$ decreases during sensory deprivation, and indicates that the near-null subspace of the Hessian alone cannot capture the full compensatory change. We therefore adopt a different approach. Rather than searching for directions of least sensitivity, we instead impose a non-zero change in $y_{\max,g}$ and determine the remaining components of $\Delta\theta$ so that the circuit output is preserved as much as possible.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Constrained Direction Analysis}
+\label{subsec:Constrained direction analysis}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+We now seek parameter perturbations $\Delta\theta$ that are consistent with the experimentally observed decrease in $y_{\max,g}$. Rather than identifying directions of minimal output sensitivity as before, we pin $y_{\max,g}$ to change, and ask what compensatory adjustments in the remaining 12 parameters are required to keep the circuit output unchanged.
+
+Let $v \in \mathbb{R}^{13}$ denote the unit vector pointing in the direction of decreasing $y_{\max,g}$, i.e. $v = -e$, where $e$ is the unit vector along the $y_{\max,g}$ axis. Any parameter perturbation $\Delta \theta =s \in \mathbb{R}^{13}$ can be decomposed into components parallel and orthogonal to $v$:
+
+\begin{equation}
+    s = s_\parallel + s_\perp = v(v^T s) + (I - vv^T)s
+\end{equation}
+
+Since the change in $y_{\max,g}$ is prescribed by the experimental observation, we fix $v^T s = 1$, representing a unit decrease in $y_{\max,g}$, and allow only the orthogonal component $s_\perp = (I - vv^T)s$ to be optimised. The choice $v^T s = 1$ sets the scale of the $y_{\max,g}$ perturbation and the resulting compensatory directions $s_\perp^*$ scale proportionally, so the relative structure of the solution is independent of this choice. The optimisation seeks the twelve remaining parameter adjustments that minimise the quadratic term in Equation~\eqref{eq:delta_y}:
+
+\begin{equation}
+    \min_{s_\perp} \; s^T \mathbf{H(\theta_o)} s
+    \quad \text{subject to} \quad
+    v^T s = 1
+\end{equation}
+
+\noindent where $\mathbf{H}(\theta_o)$ is the Hessian of the mitral output evaluated at the baseline operating point $x=1$, and $\theta_o$ is a baseline from the set of 562 valid parameter initialisations.
+
+Since $v = [0,\, 0,\, \ldots,\, 0,\, -1]^T$ has its nonzero entry in the $y_{\max,g}$ position, the outer product $vv^T$ and the projection $I - vv^T$ take the block forms:
+
+\begin{equation}
+    vv^T =
+    \begin{bmatrix}
+        \mathbf{0}_{12\times12} & \mathbf{0}_{12\times1} \\
+        \mathbf{0}_{1\times12} & 1
+    \end{bmatrix}
+    \qquad
+    I - vv^T =
+    \begin{bmatrix}
+        I_{12} & \mathbf{0}_{12\times1} \\
+        \mathbf{0}_{1\times12} & 0
+    \end{bmatrix}
+\end{equation}
+
+Partitioning the symmetric matrix $\mathbf{H}$ similarly:
+\begin{equation}
+    \mathbf{H} =
+    \begin{bmatrix}
+        \bf H_1 & \bf h_2 \\
+        \bf h_2^T & h_3
+    \end{bmatrix}
+\end{equation}
+
+\noindent where $\mathbf{H}_1 \in \mathbb{R}^{12\times 12}$ ,
+$\mathbf{h}_2 \in \mathbb{R}^{12\times 1}$, and $h_3 \in \mathbb{R}$. Substituting $s =
+[s_\perp^T,\; -1]^T$ gives:
+
+\begin{equation}
+    s^T \mathbf{H} s =
+    \begin{bmatrix} s_\perp \\ -1 \end{bmatrix}^{\!T}
+    \begin{bmatrix} \bf H_1 & \bf h_2 \\ \bf h_2^T & h_3 \end{bmatrix}
+    \begin{bmatrix} s_\perp \\ -1 \end{bmatrix}
+    = s_\perp^T \mathbf H_1 s_\perp - 2\mathbf h_2^T s_\perp + h_3
+\end{equation}
+
+Since $h_3$ is constant with respect to $s_\perp$, the remaining terms are made stationary by differentiating and setting the result to zero:
+
+\begin{equation}
+    \frac{\partial}{\partial s_\perp}
+    \!\left( s_\perp^T \bf H_1 s_\perp - 2\bf h_2^T s_\perp \right)
+    = 2\bf H_1 s_\perp - 2\bf h_2 = 0
+\end{equation}
+
+
+The full optimal constrained perturbation is therefore:
+\begin{equation}
+    s^* = v + s_\perp^* \qquad s_\perp^* = \bf H_{1}^{-1} \bf h_{2}
+    \label{eq:s_star}
+\end{equation}
+
+Since $\mathbf{H}$ is indefinite (Section~\ref{subsec:Homeostatic_plasticity: Computing the Hessian}), this is in general a stationary point of the quadratic form rather than a minimum. We return to this limitation in Section~\ref{subsec:direct solve}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Numerical solution: pseudoinverse }
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+The constrained optimisation problem is solved analytically for each of the 562 baseline initialisations, producing a set of candidate compensatory directions. However, the solution requires inverting $\mathbf{H_1}$ (Equation \eqref{eq:s_star}), which is singular by construction, i.e. it maps at least one non-zero vector to zero, so a standard matrix inverse does not exist.
+
+Inverting a matrix amplifies each direction in proportion to $1/\sigma$, where $\sigma$ is the corresponding singular value. For directions along which $\sigma \approx 0$, a naive inversion would amplify these directions by an arbitrarily large factor, producing an unreliably large $s_\perp^*$. Therefore, we avoid this by using the pseudoinverse $\mathbf{H_1}^+$, computed with a regularisation threshold of \texttt{rcond=$10^{-6}$}, which treats any singular value smaller than $10^{-6} \sigma_{max}$ as exactly zero, contributing nothing to the solution along those directions.
+
+\begin{equation}
+    s_\perp^* = \mathbf{H_1}^+\, \mathbf{h_{2}}
+\end{equation}
+
+Intuitively, the pseudoinverse adjusts only the directions in which the output is sensitive to parameter changes, and leaves the insensitive directions untouched. Since we are looking for $s_\perp^*$, the compensatory adjustment forced by the pinned step in $y_{\max,g}$, there is no reason to move along directions that do not affect the output. Therefore, this produces the smallest possible compensatory perturbation consistent with the imposed constraint.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Average Direction Across Solutions }
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+For each of the 562 baseline parameter sets $\theta_o$, we compute $\mathbf{H}(\theta_o)$ and solve for $s_{\perp ,k}^*$, then reconstruct the full candidate direction by combining the pinned $y_{\max,g}$ component $v$ with the optimised orthogonal component:
+
+\begin{equation}
+    s_k^* = v + s_{\perp,k}^*
+\end{equation}
+
+Repeating this across all 562 baselines produces a collection of candidate compensatory directions, stored row-wise in a matrix, where each row corresponds to one direction $s_k^*$. We normalise each direction to unit length before further analysis, ensuring that the subsequent comparison across baselines reflects differences in direction rather than differences in scale:
+\begin{equation}
+  \hat{r}_k = \frac{s_k^*}{\|s_k^*\|_2}
+\end{equation}
+
+Figure~\ref{fig:x_collect_all} shows the normalised directions $\hat{r}_k$ across all 562 baselines, showing how each parameter must adjust in response to a decrease in $y_{\max,g}$. Note that after normalisation the $y_{\max,g}$ component is no longer exactly $-1$, but the relative pattern of parameter co-variation is preserved.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{Figures_final/x_collect_all.eps}
+    \caption{Normalised constrained step directions $\hat{r}_k$ at each of the 562 baseline parameters $\theta_o$, for a decrease in $y_{\max,g}$.}
+    \label{fig:x_collect_all}
+\end{figure}
+
+The normalised directions fall into two families, visible as two clusters in Figure~\ref{fig:x_collect_all}. Both decrease $y_{\max,g}$ by construction. The majority family (532 of the 562 baselines) and the minority family (30 baselines) differ in the sign of most other components.
+
+Requiring the quadratic term in Equation~\eqref{eq:delta_y} to be approximately zero is not sufficient for output preservation. We must also consider the linear term, $\mathrm{grad}^\top s_{k}^*$, where the gradient is evaluated at the same baseline ${\theta}_o$ used to compute $s_{k}^*$. The normalised directions are close to orthogonal to the gradient, with $|\hat{s}^*_k \cdot \hat{g}| < 0.14$ across all baselines (median 0.10), where $\hat{g}$ is the normalised gradient, which corresponds to an angular deviation of less than $8^\circ$ from exact orthogonality. This is, however, not sufficient. A unit decrease in $y_{\max,g}$ requires a large compensating vector (the median norm of $s^*$ is about 5), so that even this small residual component along the gradient gives a first-order contribution. For a 10\% decrease in $y_{\max,g}$ the linear term exceeds the quadratic term in all 562 baselines, typically by about an order of magnitude. The Hessian-based direction therefore minimises the term that matters least, and its ability to preserve the output must be tested directly.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Direct Solution for a Prescribed Change in $y_{\max,g}$}
+\label{subsec:direct solve}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+The Hessian-based analysis has three limitations. First, $\mathbf{H}$ is the Hessian of the output $y$, not of a loss at a minimum, so it is indefinite (typically five of its thirteen eigenvalues are negative). The quadratic form $s^T\mathbf{H}s$ then has no minimum, and the pseudoinverse solution is only a stationary (saddle) point whose direction is not guaranteed to preserve anything. Second, it addresses only the quadratic term, whereas the linear term is first order in the step and, as shown above, dominates. Third, it is valid only for infinitesimal steps. We therefore complement it with a direct approach that uses neither the Hessian nor a Taylor expansion.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Formulation}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+For each baseline $\theta_o$ we fix $y_{\max,g}$ at a reduced value $y'_{\max,g} = (1+\delta)\,y_{\max,g}$ with $\delta = -0.1$, i.e. a 10\% reduction, and ask for the smallest change in the other twelve parameters for which the circuit still satisfies its constraints, solved with the full nonlinear model:
+
+\begin{equation}
+    \theta'=\arg\min_{\theta'}\;\|\theta'-\theta_o\|_2^2
+    \quad\text{subject to}\quad \theta'_{y_{\max,g}}=y'_{\max,g},\;\; c(\theta')=0,\;\; \theta'_i\ge 0,\;\alpha'\in[0,1].
+\end{equation}
+
+The bounds are the same as in the baseline optimisation (non-negative weights and $\alpha \in [0,1]$). This gives the true compensation for the step, valid at any step size, and cannot suffer from the indefinite-Hessian problem. Two variants of the constraints $c(\theta')=0$ are compared:
+
+\begin{itemize}[left=10pt, itemsep=6pt, topsep=6pt, parsep=2pt, partopsep=0pt]
+
+\item \textbf{Constraints on $r,g,b,y$:} At $x=1$ all four populations are kept at their baseline value of 0.5. These are exactly the four conditions that every baseline satisfies (to within $2\times10^{-7}$). Because $g = y_{\max,g}\,\sigma_g$ is pinned, lowering $y_{\max,g}$ forces the input to the green cell up, so incoming weights must change. This is a strict form of homeostasis in which every population is restored to its baseline rate.
+
+\item \textbf{Constraint on $y$ only:} Only the mitral output $y=0.5$ is kept, which is the quantity that the Hessian analysis tried to preserve, while $r$, $g$ and $b$ are free to move.
+
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Numerical solution}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+The problem is an equality-constrained nearest-point problem. Adam, used for the baseline optimisation, only minimises an unconstrained loss, so finding the nearest point on the constraint set would require a penalty weight trading constraint violation against distance, and the result would depend on this weight. We therefore use sequential least-squares programming (SLSQP), which solves equality-constrained problems with bounds exactly. It requires the Jacobian of the constraints, which is obtained by automatic differentiation through the same Anderson fixed-point solver as before. Computations are in single precision, in which the constraint residual stops at about $10^{-7}$ to $10^{-5}$ (a double-precision solve agreed with the solutions to about $10^{-5}$). A baseline counts as converged if every constraint residual is below $10^{-4}$.
+
+For $\delta=-0.1$, all 562 baselines converge for both variants (maximum residual $2\times10^{-5}$ for the constraints on $r,g,b,y$ and $9\times10^{-7}$ for the constraint on $y$ only). For larger reductions, the strict variant becomes infeasible for some baselines. Once $y_{\max,g}$ is lowered by roughly 19--20\%, the bounds ($\alpha\le1$, weights $\ge0$) leave an empty feasible set, which we checked for several baselines, and these are the ones with $\alpha\approx1$.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Results}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+For each baseline the result is $\Delta\theta = \theta' - \theta_o$. Dividing by $|\Delta y_{\max,g}|$ gives the response per unit decrease of $y_{\max,g}$, $s=\Delta\theta/|\Delta y_{\max,g}|$, whose $y_{\max,g}$ component is $-1$ and which is therefore directly comparable to the Hessian-based $s^*$. Table~\ref{tab:direct_solve} summarises $s$ over the 562 baselines, and Figure~\ref{fig:direct_solve} shows the corresponding unit-normalised directions.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Compensatory change in each parameter per unit decrease in $y_{\max,g}$, $s_i = \Delta\theta_i/|\Delta y_{\max,g}|$, for a 10\% reduction of $y_{\max,g}$. Median [10th, 90th percentile] over the 562 baselines. In the strict variant, $w_{b,g}$ reaches its lower bound of zero in 57\% of baselines.}
+  \label{tab:direct_solve}
+  \begin{tabular}{lcc}
+    \toprule
+    Parameter & Constraints on $r,g,b,y$ & Constraint on $y$ only \\
+    \midrule
+    $w_{osn,r}$ & $-0.19$ $[-0.66,\,-0.01]$ & $-0.024$ $[-0.057,\,-0.006]$ \\
+    $w_{osn,b}$ & $-0.24$ $[-0.83,\,-0.01]$ & $+0.001$ $[0.000,\,+0.007]$ \\
+    $w_{osn,g}$ & $+1.93$ $[+0.76,\,+5.66]$ & $+0.010$ $[+0.001,\,+0.038]$ \\
+    $w_{osn,y}$ & $-0.12$ $[-0.40,\,-0.004]$ & $-0.095$ $[-0.168,\,-0.029]$ \\
+    $w_{b,r}$   & $+0.10$ $[+0.004,\,+0.33]$ & $+0.013$ $[+0.003,\,+0.030]$ \\
+    $w_{b,g}$   & $-0.43$ $[-1.37,\,-0.07]$ & $-0.005$ $[-0.020,\,-0.001]$ \\
+    $w_{b,y}$   & $+0.06$ $[+0.002,\,+0.20]$ & $+0.051$ $[+0.015,\,+0.087]$ \\
+    $w_{r,y}$   & $-0.06$ $[-0.20,\,-0.002]$ & $-0.051$ $[-0.088,\,-0.015]$ \\
+    $w_{r,g}$   & $+0.98$ $[+0.39,\,+2.83]$ & $+0.005$ $[+0.001,\,+0.020]$ \\
+    $\alpha$    & $+0.23$ $[+0.01,\,+0.74]$ & $-0.118$ $[-0.220,\,-0.036]$ \\
+    $W_{g,r}$   & $+0.10$ $[+0.004,\,+0.33]$ & $+0.012$ $[+0.003,\,+0.027]$ \\
+    $W_{g,y}$   & $+0.06$ $[+0.002,\,+0.20]$ & $+0.046$ $[+0.013,\,+0.079]$ \\
+    \midrule
+    median $\|s_\perp\|$ & $2.39$ & $0.18$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[b]{0.95\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{Figures_final/direct_solve_all.eps}
+        \caption{Constraints on $r,g,b,y$}
+        \label{fig:direct_solve_all}
+    \end{subfigure}
+    \vspace{6pt}
+    \begin{subfigure}[b]{0.95\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{Figures_final/direct_solve_y.eps}
+        \caption{Constraint on $y$ only}
+        \label{fig:direct_solve_y}
+    \end{subfigure}
+    \caption{Unit-normalised direct-solve directions $\Delta\theta$ for a 10\% reduction of $y_{\max,g}$. Left panels: all 562 baselines. Right panels: mean and 95\% confidence interval across baselines.}
+    \label{fig:direct_solve}
+\end{figure}
+
+The two variants differ greatly in the compensation they require. When all populations are held at their baseline rate, the compensation is dominated by the input to the green cell: $w_{osn,g}$ and $w_{r,g}$ increase and $w_{b,g}$ decreases, raising the green input to offset the lower gain, with smaller changes elsewhere. When only the mitral output is preserved, the required compensation is an order of magnitude smaller (median $\|s_\perp\|$ of 0.18 compared with 2.39), as the output depends on green cells only through the single inhibitory pathway $\mathbf{W}_{g,y}\,g$. It is concentrated on the inputs to the mitral cell ($w_{osn,y}$, $w_{r,y}$, $w_{b,y}$), together with $\alpha$ and $W_{g,y}$.
+
+The direction of compensation is a property of the circuit rather than of the chosen step size. Comparing the direction at reductions of 10\%, 20\% and 30\% with that at 5\% (on a subset of 71 baselines), the median cosine is 1.000 at all step sizes for the constraint on $y$ only, and 0.99, 0.95 and 0.91 for the strict variant, which is slightly more nonlinear, presumably because the bounds begin to act. The experimentally observed reduction of firing rates is larger than the 10\% step used here, but the direction of the required compensation remains informative.
+
+The direct solutions also show how well the Hessian-based direction performs. The cosine between the two directions has a median of 0.52 (10th--90th percentile $[0.18, 0.87]$) for the strict variant and 0.19 ($[0.01, 0.58]$) for the constraint on $y$ only, so the Hessian direction is only partly aligned with the true compensation. To quantify the consequence, we apply the Hessian direction, scaled to the same 10\% step in $y_{\max,g}$, to the full nonlinear model. The mitral output changes by a median of 6.3\% (90th percentile 52\%), whereas it is preserved to about $10^{-7}$ by the direct solutions by construction.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Stepping Along the Average Directions}
+\label{subsec:stepping}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+The direct solutions preserve the output exactly for each individual baseline, but a prediction for the circuit in general requires a single direction. We therefore summarise each set of directions (the Hessian-based directions, and the two variants of the direct solution) by the average over baselines of their unit-normalised directions. By construction, these averages are not exactly output-preserving, as they are not tuned to each baseline. To quantify the deviation, we step along them in parameter space and measure the resulting change in mitral cell output. For a normalised direction ${\Delta\theta}$, we perturb each baseline $\theta_o$ as:
+\begin{equation}
+    \theta(\varepsilon) = \theta_o + \varepsilon\,{\Delta\theta}
+\end{equation}
+
+For each perturbation, we re-solve the circuit fixed point and evaluate the resulting mitral cell output $y(\varepsilon)$, varying $\varepsilon$ over the range $[-2, 2]$. To ensure comparability across baseline parameter sets of different scales, each step is additionally expressed as a fraction of the baseline parameter norm:
+\begin{equation}
+    \tilde{\varepsilon} = \frac{\varepsilon \, \|\Delta\theta\|}{\|\theta_o\|}
+\end{equation}
+
+The corresponding relative change in mitral output is then defined as:
+\begin{equation}
+    \left|\frac{\Delta y}{y}\right|
+    =
+    \left|\frac{y(\varepsilon) - y(0)}{y(0)}\right|
+\end{equation}
+
+As a reference, we also step along three random directions, constructed in the same way as the Hessian-based directions, i.e. with the $y_{\max,g}$ component pinned to $-1$ and the other twelve components random, followed by normalisation.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{Figures_final/step_in_x_star_3.eps}
+    \caption{Average relative change in mitral cell output as a function of normalised step size $\varepsilon\|{\Delta\theta}\|/\|\theta_o\|$, for $\varepsilon \in [-2, 2]$, along the average Hessian-based direction ($s_\perp$ Hessian), the average direct-solve directions (constraint on $y$ only, and on $r,g,b,y$), and three random directions with pinned $y_{\max,g}$. The solid lines show the mean over all 562 baseline solutions and the shaded bands denote 95\% confidence intervals (CI).}
+    \label{fig:step_in_x_star}
+\end{figure}
+
+Figure~\ref{fig:step_in_x_star} shows the relative output change when stepping along these directions. The direct-solve directions change the output least, followed by the Hessian-based direction, which for small steps changes the output by roughly two to three times as much. The random directions vary widely, from changes comparable to the direct-solve directions to much larger ones. The ordering is consistent with the analysis above: the direct solutions account for the linear term, whereas the Hessian-based direction does not. At large steps, higher-order terms in the Taylor expansion of $y(\theta)$ become significant, reflecting the inherent nonlinearity of the circuit's input--output relationship, and the curves are not symmetric in $\varepsilon$. For directions in which $y_{\max,g}$ dominates, the largest steps also correspond to changes of $y_{\max,g}$ beyond its baseline value, so these extremes are a test of the nonlinearity rather than of physiological changes. Even for the direct-solve directions the change in output is not zero, which reflects that averaging over baselines does not preserve the exact output of each individual baseline.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Predicted Compensatory Changes}
+\label{subsec:Predicted changes}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+The two variants of the direct solution correspond to two hypotheses about what the circuit preserves following the loss of gain in green cells, and make different predictions (Table~\ref{tab:direct_solve}).
+
+If only the mitral output is preserved, the predicted changes concentrate on the mitral cell. Green cells inhibit mitral cells, so lowering the gain of green cells reduces this inhibition and would raise mitral output. According to the connectivity in Figure~\ref{fig:OB_circuit}, maintaining mitral cell output would be expected to involve compensatory changes such as reduced excitatory inputs ($w_{\mathrm{osn},y}$ or $w_{r,y}$) and/or increased other inhibitory inputs ($w_{b,y}$) onto the mitral cell. Interestingly, this is precisely what the analysis reveals, with decreases in $w_{\mathrm{osn},y}$ and $w_{r,y}$ (together with a lower $\alpha$, which weakens all OSN drive), and increases in $w_{b,y}$ and in the green-to-mitral weight $W_{g,y}$, which partly restores the inhibition lost through the lower $y_{\max,g}$.
+
+If instead every population is restored to its baseline rate, the circuit must in addition increase the input to green cells ($w_{osn,g}$ and $w_{r,g}$), representing stronger synaptic drive from OSNs and ETC (red) cells onto the axonic interneuron population. This is consistent with classical homeostatic plasticity, as sensory deprivation leads to an upscaling of excitatory synapses in an attempt to compensate for reduced activity.\supercite{Turrigiano2008} However, it also requires a decrease in $w_{b,g}$, which is the opposite of the experimentally observed increase in inhibition from blue onto green cells (Section~\ref{sec:Biological Constraint}). This disfavours a scenario in which the circuit restores green activity, and favours the one in which green activity is free to fall while mitral output is preserved. In that scenario, the response of $w_{b,g}$ is negligible, so the observed increase in $w_{b,g}$ is not predicted by output preservation alone. It would further reduce green activity, and its compensation could be included by pinning it alongside $y_{\max,g}$ in the analysis of Section~\ref{subsec:Constrained direction analysis}.
+
+These predictions remain to be experimentally validated, but offer concrete and testable targets for future work.
+\newpage 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Conclusion}
+\label{sec:Conclusion}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+This work developed a biologically constrained computational model of the mouse olfactory bulb (OB) to investigate how the circuit maintains stable mitral cell output following structural changes induced by sensory deprivation. The central question, motivated by experimental observations from Galliano's lab, was to identify which parameter changes are consistent with the observed constant output of the OB circuit despite persistent reductions in axon initial segment (AIS) length in axonic (green) interneurons.
+
+The response function of each population was constrained by experimental firing-rate recordings. Fitting Naka--Rushton functions to unperturbed data gave the Hill exponent of each population, whereas the semi-saturation constants and maximal rates are poorly determined by data that do not saturate, and are absorbed into the synaptic weights. Baseline parameter sets in which all populations lie within their dynamic range were then found by optimisation from random initialisations (562 of 1000), and all were found to be locally stable.
+
+The analysis proceeded in two stages. In the first, we characterised the output-preserving subspace of the resulting thirteen-dimensional parameter space through a second-order Taylor expansion of the mitral cell output. A consistent four-dimensional near-null subspace of the Hessian was identified across all baseline solutions. It is common to all of them, orthogonal to the output gradient, and involves ten synaptic weights, but not the maximal rate of green cells.
+
+However, this subspace alone cannot describe the experimentally observed reduction in the excitability of green cells, because it leaves $y_{\max,g}$ unchanged. Comparing firing-rate curves before and after deprivation showed that the response of green cells is scaled down uniformly with little change in shape. We therefore represented the change in excitability by the maximal rate $y_{\max,g}$, which, unlike the Hill exponent or the semi-saturation constant, has an unambiguous effect on the output at a single operating point and is not absorbed into the synaptic weights once the green rate is fixed. In the second stage, we pinned a decrease in $y_{\max,g}$ and determined the compensatory adjustments of the remaining twelve parameters. A Hessian-based solution identified directions with a consistent co-variation structure across baselines, but these preserved the mitral output only partially, because the Hessian of the output is indefinite and the linear term dominates. A direct solution, which finds the nearest parameter set that satisfies the circuit constraints in the full nonlinear model, avoids these limitations. It preserves the output for every baseline, and its direction is nearly independent of the size of the step.
+
+The model makes different predictions depending on what the circuit preserves. If only the mitral cell output is preserved, it predicts decreased excitatory input to mitral cells ($w_{\mathrm{osn},y}$ and $w_{r,y}$) and increased inhibitory input from anaxonic (blue) cells ($w_{b,y}$), which compensate for the reduced inhibition from green cells. If the rates of all populations are restored, it also predicts stronger excitatory drive onto green cells ($w_{\mathrm{osn},g}$ and $w_{r,g}$) but a weaker inhibition from blue cells ($w_{b,g}$), the opposite of what is observed experimentally, which disfavours this scenario. While the first set of changes is consistent with existing experimental evidence and provides concrete targets for future investigation, the observed increase in $w_{b,g}$ is not explained by output preservation alone.
+
+Several natural extensions follow from this study. A first step would be to relax the assumption that changes in intrinsic excitability occur only in axonic green interneurons. Such changes are a general feature of homeostatic plasticity, and alterations in excitability have also been observed in other populations, such as ETC (red) cells, whose fitted exponent and maximal rate both change after deprivation. \supercite{Galliano2021} More generally, the current model makes only the maximal rate of green cells explicit, while the semi-saturation constants and maximal rates of the other populations are absorbed into the synaptic weights $w$. Representing the maximal rate of red cells explicitly, and allowing it and the Hill exponents to vary, would provide a more complete description of changes in excitability and may alter the compensatory directions identified here. This would be helped by firing-rate recordings that reach saturation, as the data currently constrain only the Hill exponents reliably. The observed increase in $w_{b,g}$ could also be included as a second pinned change alongside $y_{\max,g}$.
+
+Additionally, recent experimental work suggests that the glutamate release machinery in OSN terminals is upregulated following sensory deprivation \supercite{Huang2025} (Appendix~\ref{app:Elisa_results}(B)). However, in the current model, the OSN input--output relationship is fixed. Introducing a Naka--Rushton function to describe OSN population activity would allow the model to account for experimentally observed OSN glutamate release increase.
+
+A further extension would be to incorporate granule cells explicitly into the circuit. These are the most abundant interneuron population in the olfactory bulb and they provide inhibitory feedback onto mitral cells, which may play a more significant role in shaping circuit output than the current model assumes, e.g. by compensating for the observed silencing of inhibitory axonic (green) interneurons.
